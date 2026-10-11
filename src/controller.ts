@@ -1,4 +1,5 @@
 import type { Source } from "./api";
+import { Trail, type TrailState } from "./history";
 import { focusToHash, hashToFocus, levelOf, parentFocus, type Focus } from "./lod";
 import { FAMILIES, Galaxy, type Layers, type Quality, type Target } from "./scene/Galaxy";
 import { Store } from "./store";
@@ -28,6 +29,9 @@ export interface AppState {
   sceneError: string | null;
   /** The selected note's rendered preview is open. */
   previewOpen: boolean;
+  /** Places opened in this tab, for back, forward, and the history list. */
+  trail: TrailState;
+  historyOpen: boolean;
 }
 
 /** Glue between the scene, the HUD and the data source; the HUD only calls these methods. */
@@ -37,12 +41,14 @@ export class Controller {
   private toastTimer = 0;
   private noteSeq = 0;
   private constellationOf: Map<string, string>;
+  private trail: Trail;
 
   constructor(
     readonly source: Source,
     readonly world: World,
   ) {
     this.constellationOf = new Map(world.topics.map((t) => [t.slug, t.constellation]));
+    this.trail = new Trail(restoreTrail(`brainviz.trail:${world.brain}:${location.pathname}`));
     const quality = new URLSearchParams(location.search).get("quality");
     this.store = new Store<AppState>({
       world,
@@ -64,6 +70,8 @@ export class Controller {
       embedded: source.embedded,
       sceneError: null,
       previewOpen: false,
+      trail: this.trail.state(),
+      historyOpen: false,
     });
   }
 
@@ -85,10 +93,62 @@ export class Controller {
       this.store.set({ sceneError: err instanceof Error ? err.message : String(err) });
       console.error("brain viz: the 3D scene could not start", err);
     }
-    window.addEventListener("hashchange", () => this.applyHash());
-    this.applyHash();
+    // The trail mirrors the browser's session history: each entry carries its trail index in
+    // history.state, so the browser's own back/forward (and mouse buttons) stay in step.
+    window.addEventListener("popstate", (e) => this.onHistory(e.state));
+    window.addEventListener("hashchange", () => this.onHistory(history.state));
+    this.onHistory(history.state);
     (window as unknown as { __brainViz: unknown }).__brainViz = { controller: this, galaxy: this.galaxy, ready: true };
     document.body.dataset.ready = "1";
+  }
+
+  /** The browser moved (back, forward, a typed address, or the first load): follow it. */
+  private onHistory(state: unknown): void {
+    this.applyHash();
+    const f = this.store.state.focus;
+    const hash = focusToHash(f);
+    const i = (state as { brainViz?: number } | null)?.brainViz;
+    if (typeof i === "number" && this.trail.entries[i]?.hash === hash) {
+      this.trail.moveTo(i);
+    } else {
+      // An entry we did not create (a typed address, a fresh tab): record it and tag it.
+      const at = this.trail.visit({ hash, focus: f, title: this.titleOf(f) });
+      history.replaceState({ brainViz: at }, "", hash);
+    }
+    this.syncTrail();
+  }
+
+  back(): void {
+    if (this.trail.canBack) history.back();
+  }
+
+  forward(): void {
+    if (this.trail.canForward) history.forward();
+  }
+
+  /** Jump to any entry in the trail, the way a browser's history list does. */
+  jump(index: number): void {
+    const delta = index - this.trail.index;
+    this.store.set({ historyOpen: false });
+    if (delta) history.go(delta);
+  }
+
+  private syncTrail(): void {
+    this.store.set({ trail: this.trail.state() });
+    try {
+      sessionStorage.setItem(this.trailKey(), JSON.stringify(this.trail.state()));
+    } catch {
+      // Storage can be unavailable (private mode, file:// exports); the trail still works in memory.
+    }
+  }
+
+  private trailKey(): string {
+    return `brainviz.trail:${this.world.brain}:${location.pathname}`;
+  }
+
+  private titleOf(f: Focus): string | undefined {
+    if (f.note) return this.galaxy?.noteTitle(f.note) ?? this.store?.state.topicData?.nodes.find((n) => n.id === f.note)?.title;
+    return undefined;
   }
 
   private applyHash(): void {
@@ -103,7 +163,11 @@ export class Controller {
     this.galaxy?.setFocus(f);
     if (push) {
       const hash = focusToHash(f);
-      if (hash !== location.hash) history.pushState(null, "", hash);
+      if (hash !== location.hash) {
+        const i = this.trail.visit({ hash, focus: f, title: this.titleOf(f) });
+        history.pushState({ brainViz: i }, "", hash);
+        this.syncTrail();
+      }
     }
     if (f.topic && f.topic !== prev.topic) {
       this.store.set({ topicData: null });
@@ -118,6 +182,7 @@ export class Controller {
       if (f.note !== prev.note) this.store.set({ note: null });
       void this.source.note(f.note).then((note) => {
         if (seq === this.noteSeq) this.store.set({ note });
+        if (note && this.trail.setTitle(focusToHash(f), note.title)) this.syncTrail();
       });
     } else {
       this.store.set({ note: null, previewOpen: false });
@@ -127,6 +192,7 @@ export class Controller {
   up(): void {
     const s = this.store.state;
     if (s.paletteOpen) return this.store.set({ paletteOpen: false });
+    if (s.historyOpen) return this.store.set({ historyOpen: false });
     if (s.helpOpen) return this.store.set({ helpOpen: false });
     if (s.previewOpen) return this.store.set({ previewOpen: false });
     if (s.run) return this.setRun(null);
@@ -216,5 +282,15 @@ export class Controller {
     this.store.set({ toast: msg });
     window.clearTimeout(this.toastTimer);
     this.toastTimer = window.setTimeout(() => this.store.set({ toast: null }), 4200);
+  }
+}
+
+function restoreTrail(key: string): TrailState | undefined {
+  try {
+    const raw = sessionStorage.getItem(key);
+    const state = raw ? (JSON.parse(raw) as TrailState) : undefined;
+    return state && Array.isArray(state.entries) && typeof state.index === "number" ? state : undefined;
+  } catch {
+    return undefined;
   }
 }

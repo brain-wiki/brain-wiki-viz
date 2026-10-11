@@ -1372,6 +1372,15 @@ export class Galaxy {
     return { x: (p.x * 0.5 + 0.5) * this.container.clientWidth, y: (-p.y * 0.5 + 0.5) * this.container.clientHeight };
   }
 
+  /** A note's title, if its topic is loaded. */
+  noteTitle(id: string): string | undefined {
+    for (const layer of this.revealed.values()) {
+      const i = layer.index.get(id);
+      if (i !== undefined) return layer.nodes[i].title;
+    }
+    return undefined;
+  }
+
   revealedTopics(): string[] {
     return [...this.revealed].filter(([, l]) => l.target > 0).map(([s]) => s);
   }

@@ -69,7 +69,7 @@ button:disabled { cursor: default; opacity: 0.55; }
 .more { color: var(--dim); font-size: 11.5px; padding: 6px 8px; }
 
 /* ---- top bar ----------------------------------------------------------------------------- */
-.topbar { position: absolute; top: 14px; left: 14px; right: 14px; height: 52px; display: flex; gap: 10px; pointer-events: none; }
+.topbar { position: absolute; top: 14px; left: 14px; right: 14px; height: 52px; display: flex; gap: 10px; pointer-events: none; z-index: 25; }
 .topbar > * { pointer-events: auto; position: relative; }
 .brand { display: flex; align-items: center; gap: 10px; padding: 0 16px 0 10px; width: 260px; flex: none; }
 .logo { width: 32px; height: 32px; filter: drop-shadow(0 0 10px rgba(138, 180, 255, 0.6)); }
@@ -343,3 +343,15 @@ button:disabled { cursor: default; opacity: 0.55; }
 .md-callout.danger { --c: 251, 70, 76; }
 .md-callout.example { --c: 168, 130, 255; }
 .md-callout.quote { --c: 158, 158, 158; }
+
+/* Back, forward, and history, left of the breadcrumb. */
+.nav-buttons { position: relative; display: flex; align-items: center; gap: 1px; margin-right: 8px; padding-right: 8px; border-right: 1px solid var(--line); }
+.nav-buttons .icon-btn:disabled { opacity: 0.3; pointer-events: none; }
+.nav-buttons .icon-btn.on { background: rgba(138, 180, 255, 0.16); color: var(--text); }
+.history-pop { position: absolute; top: calc(100% + 14px); left: -10px; width: 360px; max-height: 60vh; overflow-y: auto; padding: 10px 8px; z-index: 30; animation: pop 0.12s ease-out; }
+.history-pop .section-title { margin: 0 6px 6px; }
+.history-row { display: flex; align-items: center; gap: 8px; width: 100%; border-radius: 8px; text-align: left; }
+.history-row:hover { background: rgba(138, 180, 255, 0.1); }
+.history-row.current { background: rgba(138, 180, 255, 0.14); }
+.history-row.current .row-title { color: #fff; font-weight: 600; }
+.dot-space { display: inline-block; width: 7px; }

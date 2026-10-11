@@ -1,4 +1,5 @@
 import { useEffect, useRef } from "preact/hooks";
+import type { Visit } from "../history";
 import type { Controller } from "../controller";
 import { FAMILIES, FAMILY_COLORS, shortTitle, type Family, type LinkEnd, type Target } from "../scene/Galaxy";
 import { useStore } from "../store";
@@ -71,6 +72,65 @@ function Breadcrumb({ c }: { c: Controller }) {
   );
 }
 
+/** What a trail entry shows in tooltips and the history list. */
+function visitLabel(c: Controller, v: Visit): { title: string; kind: string; color?: string; sub?: string } {
+  const f = v.focus;
+  const topic = c.world.topics.find((t) => t.slug === f.topic);
+  if (f.note) return { title: v.title ?? c.galaxy?.noteTitle(f.note) ?? "Note", kind: "note", color: topic?.color, sub: topic?.title };
+  if (topic) return { title: topic.title, kind: "topic", color: topic.color };
+  const con = c.world.constellations.find((x) => x.id === f.constellation);
+  if (con) return { title: shortTitle(con.title), kind: "constellation", color: con.color };
+  return { title: c.world.constellations.length > 1 ? "Galaxy" : c.world.brain, kind: "overview" };
+}
+
+/** Back, forward, and the list of everything opened in this tab, like a browser's history. */
+function NavButtons({ c }: { c: Controller }) {
+  const trail = useStore(c.store, (s) => s.trail);
+  const open = useStore(c.store, (s) => s.historyOpen);
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const close = (e: PointerEvent) => {
+      if (!ref.current?.contains(e.target as Node)) c.store.set({ historyOpen: false });
+    };
+    document.addEventListener("pointerdown", close);
+    return () => document.removeEventListener("pointerdown", close);
+  }, [open]);
+  const back = trail.entries[trail.index - 1];
+  const fwd = trail.entries[trail.index + 1];
+  return (
+    <div class="nav-buttons" ref={ref}>
+      <button class="icon-btn" disabled={!back} onClick={() => c.back()} aria-label="Back" title={back ? `Back to ${visitLabel(c, back).title} (Alt+←)` : "Back"}>
+        <Icon name="back" />
+      </button>
+      <button class="icon-btn" disabled={!fwd} onClick={() => c.forward()} aria-label="Forward" title={fwd ? `Forward to ${visitLabel(c, fwd).title} (Alt+→)` : "Forward"}>
+        <Icon name="forward" />
+      </button>
+      <button class={`icon-btn${open ? " on" : ""}`} disabled={trail.entries.length < 2} onClick={() => c.store.set({ historyOpen: !open })} aria-label="History" aria-expanded={open} title="Everything opened in this tab">
+        <Icon name="history" />
+      </button>
+      {open && (
+        <div class="panel history-pop" role="menu" aria-label="History">
+          <div class="section-title">Opened in this tab</div>
+          {trail.entries
+            .map((v, i) => ({ v, i }))
+            .reverse()
+            .map(({ v, i }) => {
+              const l = visitLabel(c, v);
+              return (
+                <button key={`${i}${v.hash}`} role="menuitem" class={`row history-row${i === trail.index ? " current" : ""}`} onClick={() => c.jump(i)}>
+                  {l.color ? <Dot color={l.color} size={7} /> : <span class="dot-space" />}
+                  <span class="row-title">{l.title}</span>
+                  <span class="row-meta">{l.sub ?? l.kind}</span>
+                </button>
+              );
+            })}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function TopBar({ c }: { c: Controller }) {
   const w = c.world;
   const embedded = useStore(c.store, (s) => s.embedded);
@@ -87,6 +147,7 @@ function TopBar({ c }: { c: Controller }) {
         </div>
       </div>
       <div class="panel crumbs-panel">
+        <NavButtons c={c} />
         <Breadcrumb c={c} />
       </div>
       <button class="panel search-btn" onClick={() => c.store.set({ paletteOpen: true })} aria-label="Search">
@@ -265,6 +326,7 @@ function Help({ c }: { c: Controller }) {
     ["Moving pulses", "Direction: prerequisite → dependent (blue), old → new (amber)"],
     ["Hover a trail", "See the two notes it connects; click to go to the other end"],
     ["Esc", "Up one level, or close"],
+    ["Alt ←  ·  Alt →", "Back and forward through what you opened (or the buttons by the breadcrumb)"],
     ["H", "Health mode"],
     ["L", "Labels"],
     ["R", "Reset view"],
