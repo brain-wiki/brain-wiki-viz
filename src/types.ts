@@ -137,6 +137,16 @@ export interface NoteDetail {
   backlinks?: Backlink[];
   /** Exported files carry no claim text. */
   partial?: boolean;
+  /** Frontmatter, the body as Markdown, and wikilink text -> visible target, for the preview. */
+  properties?: Record<string, unknown>;
+  markdown?: string;
+  links?: Record<string, LinkTarget>;
+}
+
+export interface LinkTarget {
+  id: string;
+  title: string;
+  topic: string | null;
 }
 
 export interface SearchHit {

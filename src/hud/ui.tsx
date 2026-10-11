@@ -35,7 +35,7 @@ export function fmt(n: number): string {
   return n >= 10000 ? `${(n / 1000).toFixed(1)}k` : n.toLocaleString();
 }
 
-export function Icon({ name }: { name: "search" | "layers" | "health" | "reset" | "help" | "labels" | "spark" | "close" | "chevron" | "back" | "copy" | "open" }) {
+export function Icon({ name }: { name: "search" | "layers" | "health" | "reset" | "help" | "labels" | "spark" | "close" | "chevron" | "back" | "copy" | "open" | "read" }) {
   const p: Record<string, string> = {
     search: "M10.5 3a7.5 7.5 0 0 1 5.9 12.1l4.2 4.2-1.4 1.4-4.2-4.2A7.5 7.5 0 1 1 10.5 3Zm0 2a5.5 5.5 0 1 0 0 11 5.5 5.5 0 0 0 0-11Z",
     layers: "m12 3 9 5-9 5-9-5 9-5Zm-9 9 9 5 9-5M3 16l9 5 9-5",
@@ -49,6 +49,7 @@ export function Icon({ name }: { name: "search" | "layers" | "health" | "reset" 
     back: "m15 6-6 6 6 6",
     copy: "M8 8h11v11H8zM5 16V5h11",
     open: "M14 4h6v6m0-6-9 9M10 6H5v13h13v-5",
+    read: "M4 5h6a2 2 0 0 1 2 2v12a2 2 0 0 0-2-2H4zM20 5h-6a2 2 0 0 0-2 2v12a2 2 0 0 1 2-2h6z",
   };
   return (
     <svg class="icon" viewBox="0 0 24 24" aria-hidden="true">

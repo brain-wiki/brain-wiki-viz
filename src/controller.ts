@@ -26,6 +26,8 @@ export interface AppState {
   embedded: boolean;
   /** Why the 3D scene could not start; the HUD keeps working without it. */
   sceneError: string | null;
+  /** The selected note's rendered preview is open. */
+  previewOpen: boolean;
 }
 
 /** Glue between the scene, the HUD and the data source; the HUD only calls these methods. */
@@ -61,6 +63,7 @@ export class Controller {
       toast: null,
       embedded: source.embedded,
       sceneError: null,
+      previewOpen: false,
     });
   }
 
@@ -117,7 +120,7 @@ export class Controller {
         if (seq === this.noteSeq) this.store.set({ note });
       });
     } else {
-      this.store.set({ note: null });
+      this.store.set({ note: null, previewOpen: false });
     }
   }
 
@@ -125,6 +128,7 @@ export class Controller {
     const s = this.store.state;
     if (s.paletteOpen) return this.store.set({ paletteOpen: false });
     if (s.helpOpen) return this.store.set({ helpOpen: false });
+    if (s.previewOpen) return this.store.set({ previewOpen: false });
     if (s.run) return this.setRun(null);
     if (levelOf(s.focus) === "galaxy") return this.galaxy?.resetView();
     this.focus(parentFocus(s.focus));
@@ -134,7 +138,7 @@ export class Controller {
     if (!t) return;
     if (t.kind === "constellation") this.focus({ constellation: t.id });
     else if (t.kind === "topic") this.focus({ topic: t.slug });
-    else if (t.kind === "note") this.focus({ topic: t.topic, note: t.id });
+    else if (t.kind === "note") this.openNote(t.id, t.topic);
     else if (t.kind === "link") {
       // Go to the end you are not already on.
       const end = this.store.state.focus.note === t.to.id ? t.from : t.to;
@@ -156,8 +160,11 @@ export class Controller {
     else if (d.level === "constellation" && d.ratio > 8 && this.world.constellations.length > 1) this.focus({});
   }
 
+  /** Select a note and open its preview: what clicking a note means everywhere in the UI. */
   openNote(id: string, topic: string | null): void {
-    if (topic) this.focus({ topic, note: id });
+    if (!topic) return;
+    this.focus({ topic, note: id });
+    this.store.set({ previewOpen: true });
   }
 
   setLayer(family: keyof Layers, on: boolean): void {

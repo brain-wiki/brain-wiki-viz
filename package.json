@@ -15,10 +15,14 @@
   "dependencies": {
     "camera-controls": "2.10.1",
     "d3-force-3d": "2.3.2",
+    "mdast-util-from-markdown": "2.0.2",
+    "mdast-util-gfm": "3.1.0",
+    "micromark-extension-gfm": "3.0.0",
     "preact": "10.26.9",
     "three": "0.177.0"
   },
   "devDependencies": {
+    "@types/mdast": "4.0.4",
     "@types/three": "0.177.0",
     "typescript": "5.8.3",
     "vite": "7.0.6",

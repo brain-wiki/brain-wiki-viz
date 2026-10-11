@@ -6,6 +6,7 @@ import { Inspector } from "./Inspector";
 import { Minimap } from "./Minimap";
 import { Navigator } from "./Navigator";
 import { Palette } from "./Palette";
+import { Preview } from "./Preview";
 import { Dot, FLAG_COLOR, FLAG_LABEL, fmt, Icon, Kbd } from "./ui";
 
 const FAMILY_LABEL: Record<Family, string> = {
@@ -257,7 +258,8 @@ function HoverCard({ c }: { c: Controller }) {
 function Help({ c }: { c: Controller }) {
   const rows: [string, string][] = [
     ["/  or  Ctrl/⌘ K", "Search notes, topics and constellations"],
-    ["Click", "Fly to a constellation, topic or note"],
+    ["Click", "Fly to a constellation or topic; open a note's preview"],
+    ["P", "Show or hide the selected note's preview"],
     ["Scroll", "Zoom toward the cursor; detail appears as you get closer"],
     ["Drag", "Pan across the map"],
     ["Moving pulses", "Direction: prerequisite → dependent (blue), old → new (amber)"],
@@ -310,6 +312,7 @@ export function App({ c }: { c: Controller }) {
       }
       if (typing || e.metaKey || e.ctrlKey || e.altKey) return;
       if (e.key === "h" || e.key === "H") c.setHealth(!c.store.state.health);
+      else if ((e.key === "p" || e.key === "P") && c.store.state.focus.note) c.store.set({ previewOpen: !c.store.state.previewOpen });
       else if (e.key === "l" || e.key === "L") c.setLabels(!c.store.state.labels);
       else if (e.key === "r" || e.key === "R") c.focus({});
       else if (e.key === "?") c.store.set({ helpOpen: true });
@@ -345,6 +348,7 @@ export function App({ c }: { c: Controller }) {
       <TopBar c={c} />
       <Navigator c={c} />
       <Inspector c={c} />
+      <Preview c={c} />
       {!sceneError && <Minimap c={c} />}
       <Dock c={c} />
       <HoverCard c={c} />

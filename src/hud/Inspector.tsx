@@ -279,6 +279,9 @@ function NoteCard({ c, id, slug }: { c: Controller; id: string; slug: string }) 
       {path && (
         <div class="path-row">
           <code class="path">{path}</code>
+          <button class="icon-btn" title="Read the note (P)" onClick={() => c.store.set({ previewOpen: true })}>
+            <Icon name="read" />
+          </button>
           <button
             class="icon-btn"
             title="Copy path"
