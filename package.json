@@ -1,0 +1,26 @@
+{
+  "name": "brain-wiki-viz",
+  "private": true,
+  "version": "0.0.0",
+  "description": "Source of the brain viz front end; the build is committed to src/brainwiki/viz/app/.",
+  "license": "Apache-2.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build && node scripts/notices.mjs",
+    "check": "tsc --noEmit && vitest run",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "camera-controls": "2.10.1",
+    "d3-force-3d": "2.3.2",
+    "preact": "10.26.9",
+    "three": "0.177.0"
+  },
+  "devDependencies": {
+    "@types/three": "0.177.0",
+    "typescript": "5.8.3",
+    "vite": "7.0.6",
+    "vitest": "3.2.4"
+  }
+}
