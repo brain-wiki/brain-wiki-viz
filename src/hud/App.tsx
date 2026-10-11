@@ -17,6 +17,15 @@ const FAMILY_LABEL: Record<Family, string> = {
   links_to: "Body links",
 };
 
+const FAMILY_HINT: Record<Family, string> = {
+  part_of: "Part of: a note belongs to its topic's hub",
+  depends_on: "Depends on: pulses run from the prerequisite to what depends on it",
+  conflicts_with: "Conflicts: two notes contradict each other",
+  supersedes: "Supersedes: pulses run from the old note to the one that replaced it",
+  related_to: "Related: a loose association, no direction",
+  links_to: "Body links: wikilinks inside note text",
+};
+
 function Logo() {
   return (
     <svg class="logo" viewBox="0 0 32 32" aria-hidden="true">
@@ -104,7 +113,7 @@ function Dock({ c }: { c: Controller }) {
     <div class="panel dock" role="toolbar" aria-label="Layers">
       <div class="dock-group">
         {FAMILIES.map((f) => (
-          <button key={f} class={`layer${layers[f] ? " on" : ""}`} aria-pressed={layers[f]} onClick={() => c.setLayer(f, !layers[f])} title={FAMILY_LABEL[f]}>
+          <button key={f} class={`layer${layers[f] ? " on" : ""}`} aria-pressed={layers[f]} onClick={() => c.setLayer(f, !layers[f])} title={FAMILY_HINT[f]}>
             <span class="swatch" style={{ background: FAMILY_COLORS[f], boxShadow: layers[f] ? `0 0 10px ${FAMILY_COLORS[f]}` : "none" }} />
             <span>{FAMILY_LABEL[f]}</span>
           </button>
@@ -194,7 +203,8 @@ function Help({ c }: { c: Controller }) {
     ["/  or  Ctrl/⌘ K", "Search notes, topics and constellations"],
     ["Click", "Fly to a constellation, topic or note"],
     ["Scroll", "Zoom toward the cursor; detail appears as you get closer"],
-    ["Drag  ·  right-drag", "Orbit  ·  pan"],
+    ["Drag", "Pan across the map"],
+    ["Moving pulses", "Direction: prerequisite → dependent (blue), old → new (amber)"],
     ["Esc", "Up one level, or close"],
     ["H", "Health mode"],
     ["L", "Labels"],

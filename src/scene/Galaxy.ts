@@ -58,6 +58,10 @@ const FAMILY_STYLE: Record<Family, { width: number; opacity: number; dashed: boo
 
 export type Quality = "high" | "low";
 
+/** Camera tilt from straight down, in radians. The view is a 2.5D map: fixed tilt and heading. */
+const TILT = 0.68;
+const VIEW_DIR = new THREE.Vector3(0, Math.cos(TILT), Math.sin(TILT));
+
 export interface GalaxyEvents {
   hover(t: Target | null, x: number, y: number): void;
   select(t: Target | null): void;
@@ -245,9 +249,17 @@ export class Galaxy {
     this.controls.minDistance = 4;
     this.controls.maxDistance = R * 7;
     this.controls.dollySpeed = 0.6;
-    this.controls.mouseButtons.left = CameraControls.ACTION.ROTATE;
-    this.controls.mouseButtons.right = CameraControls.ACTION.TRUCK;
+    // Map navigation: dragging slides over the galactic plane, the wheel or a pinch zooms; no orbiting.
+    this.controls.minPolarAngle = this.controls.maxPolarAngle = TILT;
+    this.controls.minAzimuthAngle = this.controls.maxAzimuthAngle = 0;
+    // SCREEN_PAN moves along the ground (sideways and forward); TRUCK would slide up the tilted view plane.
+    this.controls.mouseButtons.left = CameraControls.ACTION.SCREEN_PAN;
+    this.controls.mouseButtons.right = CameraControls.ACTION.SCREEN_PAN;
+    this.controls.mouseButtons.middle = CameraControls.ACTION.DOLLY;
     this.controls.mouseButtons.wheel = CameraControls.ACTION.DOLLY;
+    this.controls.touches.one = CameraControls.ACTION.TOUCH_SCREEN_PAN;
+    this.controls.touches.two = CameraControls.ACTION.TOUCH_DOLLY;
+    this.controls.touches.three = CameraControls.ACTION.NONE;
     this.controls.addEventListener("controlstart", () => {
       this.userDriven = true;
     });
@@ -807,18 +819,8 @@ export class Galaxy {
     this.userDriven = false;
     const smooth = !instant && this.motion;
     const R = this.layout.radius;
-    // End values, not the live camera: a flight that has not run yet (a deep link right after
-    // the instant opening shot) would otherwise start from the default, edge-on camera.
-    const dir = new THREE.Vector3().subVectors(this.controls.getPosition(new THREE.Vector3()), this.controls.getTarget(new THREE.Vector3()));
-    if (dir.lengthSq() < 1e-6) dir.set(0, 0.6, 1);
-    dir.normalize();
-    if (dir.y < 0.4) {
-      dir.y = 0.4;
-      dir.normalize();
-    }
-    const go = (c: THREE.Vector3, d: number, keepDir = true) => {
-      const v = keepDir ? dir.clone() : new THREE.Vector3(0, 0.78, 0.62).normalize();
-      const pos = c.clone().addScaledVector(v, d);
+    const go = (c: THREE.Vector3, d: number) => {
+      const pos = c.clone().addScaledVector(VIEW_DIR, d);
       void this.controls.setLookAt(pos.x, pos.y, pos.z, c.x, c.y, c.z, smooth);
     };
     if (f.note && f.topic) {
@@ -844,12 +846,12 @@ export class Galaxy {
     }
     const c = f.constellation ? this.layout.constellations.get(f.constellation) : this.world.constellations.length === 1 ? this.layout.constellations.get(this.world.constellations[0].id) : undefined;
     if (c) {
-      go(new THREE.Vector3(c.x, c.y, c.z), c.r * 2.4, !!f.constellation);
+      go(new THREE.Vector3(c.x, c.y, c.z), c.r * 2.4);
       return;
     }
-    // The whole galaxy, tilted like a strategy map, nudged right of the navigator panel.
+    // The whole galaxy, nudged right of the navigator panel.
     const fit = R / Math.sin((this.camera.fov * Math.PI) / 360) / Math.min(1, this.camera.aspect);
-    go(new THREE.Vector3(-R * 0.08, 0, 0), fit * 0.86, false);
+    go(new THREE.Vector3(-R * 0.08, 0, 0), fit * 0.86);
   }
 
   resetView(): void {
