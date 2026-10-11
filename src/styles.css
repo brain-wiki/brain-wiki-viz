@@ -212,6 +212,10 @@ button:disabled { cursor: default; opacity: 0.55; }
 .hovercard { position: fixed; pointer-events: none; padding: 10px 12px; min-width: 200px; max-width: 290px; z-index: 20; animation: pop 0.12s ease-out; }
 .hover-title { font-weight: 600; margin: 4px 0 3px; line-height: 1.3; }
 .hover-line { color: var(--muted); font-size: 11.5px; }
+.link-end + .link-verb { margin: 2px 0 1px; }
+.link-verb { font-size: 11.5px; font-weight: 600; }
+.link-hint { margin-top: 6px; color: var(--dim); }
+.insp-kicker .swatch { display: inline-block; width: 12px; height: 3px; border-radius: 2px; vertical-align: middle; }
 .hover-flags { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 5px; font-size: 11px; }
 .health-legend { left: 50%; bottom: 72px; transform: translateX(-50%); padding: 7px 14px; display: flex; gap: 10px; align-items: center; color: var(--muted); font-size: 11.5px; border-color: rgba(255, 70, 90, 0.35); white-space: nowrap; }
 .health-ramp { width: 120px; height: 6px; border-radius: 3px; background: linear-gradient(90deg, #6b85b8, #ffb347, #ff3348); box-shadow: 0 0 10px rgba(255, 70, 90, 0.35); }

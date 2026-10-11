@@ -1,6 +1,6 @@
 import { useEffect, useRef } from "preact/hooks";
 import type { Controller } from "../controller";
-import { FAMILIES, FAMILY_COLORS, shortTitle, type Family } from "../scene/Galaxy";
+import { FAMILIES, FAMILY_COLORS, shortTitle, type Family, type LinkEnd, type Target } from "../scene/Galaxy";
 import { useStore } from "../store";
 import { Inspector } from "./Inspector";
 import { Minimap } from "./Minimap";
@@ -141,11 +141,67 @@ function Dock({ c }: { c: Controller }) {
   );
 }
 
+/** How a relation reads as a sentence: subject, verb, object, given the pulse direction from → to. */
+const LINK_SENTENCE: Record<Family, { verb: string; subject: "from" | "to"; roles?: [string, string] }> = {
+  depends_on: { verb: "depends on", subject: "to", roles: ["dependent", "prerequisite"] },
+  supersedes: { verb: "supersedes", subject: "to", roles: ["newer", "older"] },
+  conflicts_with: { verb: "conflicts with", subject: "from" },
+  related_to: { verb: "is related to", subject: "from" },
+  links_to: { verb: "links to", subject: "from" },
+  part_of: { verb: "is part of", subject: "from" },
+};
+
+function LinkCard({ c, target, left, top }: { c: Controller; target: Extract<Target, { kind: "link" }>; left: number; top: number }) {
+  const s = LINK_SENTENCE[target.family];
+  const [subject, object] = s.subject === "to" ? [target.to, target.from] : [target.from, target.to];
+  const end = (e: LinkEnd, role?: string) => {
+    const t = c.world.topics.find((k) => k.slug === e.topic);
+    return (
+      <div class="link-end">
+        <div class="hover-title">{e.title}</div>
+        <div class="hover-line"><Dot color={t?.color ?? "#9cc3ff"} size={6} /> {t?.title ?? e.topic}{role ? ` · ${role}` : ""}</div>
+      </div>
+    );
+  };
+  const here = c.store.state.focus.note;
+  const next = here === target.to.id ? target.from : target.to;
+  return (
+    <div class="hovercard panel" style={{ left: `${left}px`, top: `${top}px` }}>
+      <div class="insp-kicker"><span class="swatch" style={{ background: FAMILY_COLORS[target.family] }} /> {FAMILY_LABEL[target.family]}</div>
+      {end(subject, s.roles?.[0])}
+      <div class="link-verb" style={{ color: FAMILY_COLORS[target.family] }}>{s.verb}</div>
+      {end(object, s.roles?.[1])}
+      <div class="hover-line link-hint">Click to go to {next.title}</div>
+    </div>
+  );
+}
+
+function FlowCard({ c, target, left, top }: { c: Controller; target: Extract<Target, { kind: "flow" }>; left: number; top: number }) {
+  const name = (k: string) =>
+    target.level === "constellation" ? shortTitle(c.world.constellations.find((x) => x.id === k)?.title ?? k) : c.world.topics.find((x) => x.slug === k)?.title ?? k;
+  const f = c.store.state.focus;
+  const [a, b] = f.topic === target.b || f.constellation === target.b ? [target.b, target.a] : [target.a, target.b];
+  const rels = Object.entries(target.rels).sort((x, y) => y[1] - x[1]).map(([rel, n]) => `${n} ${rel.replace(/_/g, " ")}`);
+  return (
+    <div class="hovercard panel" style={{ left: `${left}px`, top: `${top}px` }}>
+      <div class="insp-kicker">Links between {target.level === "constellation" ? "constellations" : "topics"}</div>
+      <div class="hover-title">{name(a)} ↔ {name(b)}</div>
+      <div class="hover-line">{target.total} typed links{rels.length ? `: ${rels.join(" · ")}` : ""}</div>
+      <div class="hover-line link-hint">Click to fly to {name(b)}</div>
+    </div>
+  );
+}
+
 function HoverCard({ c }: { c: Controller }) {
   const hover = useStore(c.store, (s) => s.hover);
   const data = useStore(c.store, (s) => s.topicData);
   if (!hover) return null;
   const { target, x, y } = hover;
+  if (target.kind === "link" || target.kind === "flow") {
+    const left = Math.min(window.innerWidth - 310, x + 18);
+    const top = Math.min(window.innerHeight - 200, y + 18);
+    return target.kind === "link" ? <LinkCard c={c} target={target} left={left} top={top} /> : <FlowCard c={c} target={target} left={left} top={top} />;
+  }
   let kicker = "";
   let title = "";
   let color = "#9cc3ff";
@@ -205,6 +261,7 @@ function Help({ c }: { c: Controller }) {
     ["Scroll", "Zoom toward the cursor; detail appears as you get closer"],
     ["Drag", "Pan across the map"],
     ["Moving pulses", "Direction: prerequisite → dependent (blue), old → new (amber)"],
+    ["Hover a trail", "See the two notes it connects; click to go to the other end"],
     ["Esc", "Up one level, or close"],
     ["H", "Health mode"],
     ["L", "Labels"],

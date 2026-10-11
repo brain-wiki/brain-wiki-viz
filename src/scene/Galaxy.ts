@@ -30,11 +30,39 @@ CameraControls.install({
   },
 });
 
+/** One end of a hovered relation. */
+export interface LinkEnd {
+  id: string;
+  title: string;
+  topic: string;
+}
+
 export type Target =
   | { kind: "constellation"; id: string }
   | { kind: "topic"; slug: string }
   | { kind: "note"; id: string; topic: string }
-  | { kind: "inbox" };
+  | { kind: "inbox" }
+  /** A typed relation; pulses run from `from` to `to` (prerequisite → dependent, old → new). */
+  | { kind: "link"; family: Family; from: LinkEnd; to: LinkEnd }
+  /** Typed links between two topics (or constellations), drawn as one curve. */
+  | { kind: "flow"; level: "topic" | "constellation"; a: string; b: string; total: number; rels: Record<string, number> };
+
+interface FlowHit {
+  level: "topic" | "constellation";
+  a: string;
+  b: string;
+  total: number;
+  rels: Record<string, number>;
+  points: THREE.Vector3[];
+}
+
+interface Picked {
+  target: Target;
+  key: string;
+  /** Segment pairs (xyz, xyz, ...) to highlight, for links and flows. */
+  segments?: number[];
+  color?: string;
+}
 
 export type Family = "part_of" | "depends_on" | "conflicts_with" | "supersedes" | "related_to" | "links_to";
 export type Layers = Record<Family, boolean>;
@@ -210,6 +238,12 @@ export class Galaxy {
   private lastView = 0;
   private pointer = { x: 0, y: 0, down: false, dx: 0, dy: 0, moved: false, dirty: false, inside: false };
   private hovered: string | null = null;
+  private flowHits: FlowHit[] = [];
+  private focusHits: { family: Family; from: LinkEnd; to: LinkEnd; a: number[]; b: number[] }[] = [];
+  private hoverLine: LineSegments2 | null = null;
+  /** Notes at both ends of the hovered link, and topics or constellations at both ends of a hovered flow. */
+  private hoverEnds = new Set<string>();
+  private hoverTopics = new Set<string>();
   private now = Date.now();
   private disposed = false;
   /** True while the camera moves because of the user (drag, wheel), not a scripted flight. */
@@ -469,7 +503,8 @@ export class Galaxy {
       (child as LineSegments2).geometry.dispose();
     }
     const level = levelOf(this.focus);
-    const ends: { a: THREE.Vector3; b: THREE.Vector3; ca: string; cb: string; w: number; lit: boolean }[] = [];
+    const ends: { a: THREE.Vector3; b: THREE.Vector3; ca: string; cb: string; w: number; lit: boolean; ka: string; kb: string; rels: Record<string, number> }[] = [];
+    this.flowHits = [];
     const cOf = (slug: string) => this.topicBySlug.get(slug)?.constellation;
     // While a run is selected, flows that do not touch what it changed fade back.
     const runTopics = this.run ? new Set(Object.keys(this.run.topics)) : null;
@@ -485,19 +520,23 @@ export class Galaxy {
     const cColor = new Map(this.world.constellations.map((c) => [c.id, c.color]));
     if (level === "galaxy" && this.world.constellations.length > 1) {
       const agg = new Map<string, number>();
+      const aggRels = new Map<string, Record<string, number>>();
       for (const f of this.world.flows) {
         const a = cOf(f.a);
         const b = cOf(f.b);
         if (!a || !b || a === b) continue;
         const key = a < b ? `${a}|${b}` : `${b}|${a}`;
         agg.set(key, (agg.get(key) ?? 0) + f.total);
+        const rels = aggRels.get(key) ?? {};
+        for (const [rel, n] of Object.entries(f.rels)) rels[rel] = (rels[rel] ?? 0) + n;
+        aggRels.set(key, rels);
       }
       [...agg.entries()]
         .sort((x, y) => y[1] - x[1])
         .slice(0, 70)
         .forEach(([key, w]) => {
           const [a, b] = key.split("|");
-          ends.push({ a: cPos(a), b: cPos(b), ca: cColor.get(a)!, cb: cColor.get(b)!, w, lit: !runCons || runCons.has(a) || runCons.has(b) });
+          ends.push({ a: cPos(a), b: cPos(b), ca: cColor.get(a)!, cb: cColor.get(b)!, w, lit: !runCons || runCons.has(a) || runCons.has(b), ka: a, kb: b, rels: aggRels.get(key) ?? {} });
         });
     } else {
       const inC = (slug: string) => !this.focus.constellation || cOf(slug) === this.focus.constellation;
@@ -509,7 +548,7 @@ export class Galaxy {
         .sort((x, y) => y.total - x.total)
         .slice(0, focusTopic ? 24 : 160)
         .forEach((f) => {
-          ends.push({ a: tPos(f.a), b: tPos(f.b), ca: this.topicBySlug.get(f.a)!.color, cb: this.topicBySlug.get(f.b)!.color, w: f.total, lit: !runTopics || runTopics.has(f.a) || runTopics.has(f.b) });
+          ends.push({ a: tPos(f.a), b: tPos(f.b), ca: this.topicBySlug.get(f.a)!.color, cb: this.topicBySlug.get(f.b)!.color, w: f.total, lit: !runTopics || runTopics.has(f.a) || runTopics.has(f.b), ka: f.a, kb: f.b, rels: f.rels });
         });
     }
     if (ends.length === 0) return;
@@ -530,6 +569,7 @@ export class Galaxy {
         mid.y += e.a.distanceTo(e.b) * 0.22;
         const curve = new THREE.QuadraticBezierCurve3(e.a, mid, e.b);
         const pts = curve.getPoints(14);
+        this.flowHits.push({ level: level === "galaxy" && this.world.constellations.length > 1 ? "constellation" : "topic", a: e.ka, b: e.kb, total: e.w, rels: e.rels, points: pts });
         const [ar, ag, ab] = rgb(e.ca);
         const [br, bg, bb] = rgb(e.cb);
         const lit = e.lit ? 1 : 0.15;
@@ -681,6 +721,7 @@ export class Galaxy {
   /** The selected note, its typed neighbours, and bright lines to each (also across topics). */
   private buildNeighborhood(): void {
     this.neighborhood.clear();
+    this.focusHits = [];
     for (const child of [...this.focusLines.children]) {
       this.focusLines.remove(child);
       (child as LineSegments2).geometry.dispose();
@@ -700,7 +741,8 @@ export class Galaxy {
       return p ? [p.x, p.y, p.z] : null;
     };
     const per = new Map<Family, { pos: number[]; colors: number[] }>();
-    const add = (rel: Rel, source: string, target: string, other: string, topic: string | null) => {
+    const me: LinkEnd = { id: f.note, title: layer.nodes[i].title, topic: layer.slug };
+    const add = (rel: Rel, source: string, target: string, other: string, topic: string | null, title: string) => {
       if (rel === "links_to") return;
       const fam = familyOf(rel, source, target);
       const to = where(other, topic);
@@ -708,19 +750,22 @@ export class Galaxy {
       if (!this.neighborhood.has(other)) this.neighborhood.set(other, 2);
       const [family, a] = fam;
       const forward = a === f.note;
+      const them: LinkEnd = { id: other, title, topic: topic ?? layer.slug };
+      this.focusHits.push(forward ? { family, from: me, to: them, a: from, b: to } : { family, from: them, to: me, a: to, b: from });
       let b = per.get(family);
       if (!b) per.set(family, (b = { pos: [], colors: [] }));
       b.pos.push(...(forward ? from : to), ...(forward ? to : from));
       const c = rgb(FAMILY_COLORS[family]);
       b.colors.push(c[0] * 0.5, c[1] * 0.5, c[2] * 0.5, c[0] * 1.2, c[1] * 1.2, c[2] * 1.2);
     };
+    const titleOf = (id: string) => layer.nodes[layer.index.get(id) ?? -1]?.title ?? id;
     for (const l of layer.data.links) {
-      if (l.source === f.note) add(l.rel, l.source, l.target, l.target, layer.slug);
-      else if (l.target === f.note) add(l.rel, l.source, l.target, l.source, layer.slug);
+      if (l.source === f.note) add(l.rel, l.source, l.target, l.target, layer.slug, titleOf(l.target));
+      else if (l.target === f.note) add(l.rel, l.source, l.target, l.source, layer.slug, titleOf(l.source));
     }
     for (const e of layer.data.external) {
-      if (e.source === f.note) add(e.rel, e.source, e.target, e.target, e.topic);
-      else if (e.target === f.note) add(e.rel, e.source, e.target, e.source, e.topic);
+      if (e.source === f.note) add(e.rel, e.source, e.target, e.target, e.topic, e.title);
+      else if (e.target === f.note) add(e.rel, e.source, e.target, e.source, e.topic, e.title);
     }
     for (const [family, b] of per) {
       const st = FAMILY_STYLE[family];
@@ -807,6 +852,7 @@ export class Galaxy {
         let s = 0;
         if (this.neighborhood.size) s = this.neighborhood.get(id) ?? 1;
         if (touched) s = touched.has(id) ? Math.max(s, 2) : s || 1;
+        if (this.hoverEnds.has(id)) s = Math.max(s, 2);
         arr[i] = s;
       });
       layer.state.needsUpdate = true;
@@ -1022,7 +1068,7 @@ export class Galaxy {
         const pos = new THREE.Vector3(p.x, p.y, p.z);
         const px = projectedRadius(p.r, cam.distanceTo(pos), h, this.camera.fov);
         if (px < 16 || px > 1500) continue;
-        cands.push({ key: `c:${c.id}`, kind: "constellation", text: shortTitle(c.title), sub: `${c.topics.length} topics`, color: c.color, pos, priority: 6000 + px, lift: Math.min(px * 0.55, 120) });
+        cands.push({ key: `c:${c.id}`, kind: "constellation", text: shortTitle(c.title), sub: `${c.topics.length} topics`, color: c.color, pos, priority: 6000 + px, lift: Math.min(px * 0.55, 120), emphasis: this.hoverTopics.has(c.id) });
       }
     }
     for (const t of this.topics) {
@@ -1041,9 +1087,9 @@ export class Galaxy {
         sub: changed ? `${changed} changed` : t.flagged ? `${t.notes} · ${t.flagged}⚑` : `${t.notes}`,
         color: t.color,
         pos: new THREE.Vector3(p.x, p.y, p.z),
-        priority: (focused ? 9000 : 3000) + px * 2 + (inFocusC ? 400 : 0) + (this.health && t.flagged ? 600 : 0) + (changed ? 5000 : 0),
+        priority: (focused ? 9000 : 3000) + px * 2 + (inFocusC ? 400 : 0) + (this.health && t.flagged ? 600 : 0) + (changed ? 5000 : 0) + (this.hoverTopics.has(t.slug) ? 6000 : 0),
         lift: Math.min(px, 140) * 0.62,
-        emphasis: focused || !!changed || this.hovered === `t:${t.slug}`,
+        emphasis: focused || !!changed || this.hovered === `t:${t.slug}` || this.hoverTopics.has(t.slug),
       });
     }
     const v = new THREE.Vector3();
@@ -1057,11 +1103,12 @@ export class Galaxy {
         v.set(layer.world[i * 3], layer.world[i * 3 + 1], layer.world[i * 3 + 2]);
         const d = cam.distanceTo(v);
         const starPx = (layer.sizes[i] * scale) / Math.max(d, 1);
-        const state = this.neighborhood.get(nd.id) ?? 0;
+        const hoverEnd = this.hoverEnds.has(nd.id);
+        const state = Math.max(this.neighborhood.get(nd.id) ?? 0, hoverEnd ? 2 : 0);
         const hub = nd.id === layer.data.hub;
         if (starPx < 3.5 && state < 2 && !hub) continue;
         const flagged = nd.flags.length > 0;
-        const priority = state === 3 ? 12000 : state === 2 ? 8500 : hub ? 6500 : (flagged ? 2500 : 1000) + nd.degree * 20 + starPx * 10;
+        const priority = hoverEnd ? 12500 : state === 3 ? 12000 : state === 2 ? 8500 : hub ? 6500 : (flagged ? 2500 : 1000) + nd.degree * 20 + starPx * 10;
         cands.push({
           key: `n:${nd.id}`,
           kind: hub ? "hub" : "note",
@@ -1113,15 +1160,129 @@ export class Galaxy {
 
   private hover(): void {
     if (!this.pointer.inside || this.pointer.down) return;
-    const t = this.pick(this.pointer.x, this.pointer.y);
-    const key = t ? (t.kind === "note" ? `n:${t.id}` : t.kind === "topic" ? `t:${t.slug}` : t.kind === "constellation" ? `c:${t.id}` : "inbox") : null;
-    this.renderer.domElement.style.cursor = t ? "pointer" : "";
-    if (key !== this.hovered) this.hovered = key;
-    this.events.hover(t, this.pointer.x, this.pointer.y);
+    const picked = this.pickDetailed(this.pointer.x, this.pointer.y);
+    const key = picked?.key ?? null;
+    this.renderer.domElement.style.cursor = picked ? "pointer" : "";
+    if (key !== this.hovered) {
+      this.hovered = key;
+      this.setHighlight(picked);
+    }
+    this.events.hover(picked?.target ?? null, this.pointer.x, this.pointer.y);
   }
 
-  /** Screen-space picking: stars first, then nebulae, then constellations and the inbox. */
+  /** Light the hovered link or flow and both of its ends. */
+  private setHighlight(picked: Picked | null): void {
+    if (this.hoverLine) {
+      this.scene.remove(this.hoverLine);
+      this.hoverLine.geometry.dispose();
+      this.hoverLine = null;
+    }
+    const ends = new Set<string>();
+    const topics = new Set<string>();
+    const t = picked?.target;
+    if (t?.kind === "link") {
+      ends.add(t.from.id).add(t.to.id);
+    } else if (t?.kind === "flow") {
+      topics.add(t.a).add(t.b);
+    }
+    if (picked?.segments) {
+      const c = rgb(picked.color ?? "#e8f0ff").map((v) => Math.min(1.8, v * 1.6));
+      const colors: number[] = [];
+      for (let i = 0; i < picked.segments.length / 3; i++) colors.push(c[0], c[1], c[2]);
+      this.hoverLine = this.segments(picked.segments, colors, this.lineMaterial("hover", 4.5, 1, false));
+      this.hoverLine.renderOrder = 10;
+      this.scene.add(this.hoverLine);
+    }
+    const changed = ends.size !== this.hoverEnds.size || [...ends].some((id) => !this.hoverEnds.has(id));
+    this.hoverEnds = ends;
+    this.hoverTopics = topics;
+    if (changed) this.refreshStates();
+  }
+
   pick(x: number, y: number): Target | null {
+    return this.pickDetailed(x, y)?.target ?? null;
+  }
+
+  /**
+   * Links within a few pixels of the pointer: the selected note's relations first, then the
+   * trails inside revealed topics, then flows between topics or constellations.
+   */
+  private pickLink(x: number, y: number, toScreen: (px: number, py: number, pz: number) => readonly [number, number] | null): Picked | null {
+    const near = (ax: number, ay: number, bx: number, by: number) => {
+      const dx = bx - ax;
+      const dy = by - ay;
+      const len2 = dx * dx + dy * dy;
+      const u = len2 ? Math.max(0, Math.min(1, ((x - ax) * dx + (y - ay) * dy) / len2)) : 0;
+      return Math.hypot(ax + u * dx - x, ay + u * dy - y);
+    };
+    const linkKey = (family: Family, from: LinkEnd, to: LinkEnd) => `l:${family}:${from.id}>${to.id}`;
+    let best: Picked | null = null;
+    let bestD = 6;
+    for (const h of this.focusHits) {
+      if (!this.layers[h.family]) continue;
+      const a = toScreen(h.a[0], h.a[1], h.a[2]);
+      const b = toScreen(h.b[0], h.b[1], h.b[2]);
+      if (!a || !b) continue;
+      const d = near(a[0], a[1], b[0], b[1]);
+      if (d < bestD) {
+        bestD = d;
+        best = { target: { kind: "link", family: h.family, from: h.from, to: h.to }, key: linkKey(h.family, h.from, h.to), segments: [...h.a, ...h.b], color: FAMILY_COLORS[h.family] };
+      }
+    }
+    if (best) return best;
+    bestD = 5;
+    for (const layer of this.revealed.values()) {
+      if (layer.fade < 0.5) continue;
+      const screen: (readonly [number, number] | null)[] = layer.ids.map((_, i) => toScreen(layer.world[i * 3], layer.world[i * 3 + 1], layer.world[i * 3 + 2]));
+      for (const l of layer.data.links) {
+        const fam = familyOf(l.rel, l.source, l.target);
+        if (!fam || fam[0] === "part_of" || !this.layers[fam[0]]) continue;
+        const ia = layer.index.get(fam[1]);
+        const ib = layer.index.get(fam[2]);
+        if (ia === undefined || ib === undefined || ia === ib) continue;
+        const a = screen[ia];
+        const b = screen[ib];
+        if (!a || !b) continue;
+        const d = near(a[0], a[1], b[0], b[1]);
+        if (d < bestD) {
+          bestD = d;
+          const from: LinkEnd = { id: fam[1], title: layer.nodes[ia].title, topic: layer.slug };
+          const to: LinkEnd = { id: fam[2], title: layer.nodes[ib].title, topic: layer.slug };
+          const w = layer.world;
+          best = {
+            target: { kind: "link", family: fam[0], from, to },
+            key: linkKey(fam[0], from, to),
+            segments: [w[ia * 3], w[ia * 3 + 1], w[ia * 3 + 2], w[ib * 3], w[ib * 3 + 1], w[ib * 3 + 2]],
+            color: FAMILY_COLORS[fam[0]],
+          };
+        }
+      }
+    }
+    if (best) return best;
+    bestD = 5;
+    for (const h of this.flowHits) {
+      let prev = toScreen(h.points[0].x, h.points[0].y, h.points[0].z);
+      for (let k = 1; k < h.points.length; k++) {
+        const cur = toScreen(h.points[k].x, h.points[k].y, h.points[k].z);
+        if (prev && cur) {
+          const d = near(prev[0], prev[1], cur[0], cur[1]);
+          if (d < bestD) {
+            bestD = d;
+            const segments: number[] = [];
+            for (let j = 0; j < h.points.length - 1; j++) segments.push(...h.points[j].toArray(), ...h.points[j + 1].toArray());
+            best = { target: { kind: "flow", level: h.level, a: h.a, b: h.b, total: h.total, rels: h.rels }, key: `f:${h.a}|${h.b}`, segments };
+          }
+        }
+        prev = cur;
+      }
+    }
+    return best;
+  }
+
+  /** Screen-space picking: stars first, then links, then nebulae, the inbox, and constellations. */
+  private pickDetailed(x: number, y: number): Picked | null {
+    const wrap = (t: Target | null): Picked | null =>
+      t && { target: t, key: t.kind === "topic" ? `t:${t.slug}` : t.kind === "constellation" ? `c:${t.id}` : "inbox" };
     const w = this.container.clientWidth;
     const h = this.container.clientHeight;
     const scale = h / 2 / Math.tan((this.camera.fov * Math.PI) / 360);
@@ -1147,7 +1308,9 @@ export class Galaxy {
         }
       }
     }
-    if (best) return best;
+    if (best) return { target: best, key: `n:${best.id}` };
+    const link = this.pickLink(x, y, toScreen);
+    if (link) return link;
     let bestScore = Infinity;
     for (const t of this.topics) {
       const p = this.layout.topics.get(t.slug)!;
@@ -1170,7 +1333,7 @@ export class Galaxy {
         best = { kind: "inbox" };
       }
     }
-    if (best) return best;
+    if (best) return wrap(best);
     if (this.world.constellations.length > 1) {
       for (const c of this.world.constellations) {
         const p = this.layout.constellations.get(c.id)!;
@@ -1184,7 +1347,7 @@ export class Galaxy {
         }
       }
     }
-    return best;
+    return wrap(best);
   }
 
   /** Screen position of a target, for tests and for anchoring overlays. */
@@ -1200,7 +1363,7 @@ export class Galaxy {
       const layer = this.revealed.get(t.topic);
       const i = layer?.index.get(t.id);
       if (layer && i !== undefined) p = new THREE.Vector3(layer.world[i * 3], layer.world[i * 3 + 1], layer.world[i * 3 + 2]);
-    } else {
+    } else if (t.kind === "inbox") {
       const q = this.layout.inbox;
       p = new THREE.Vector3(q.x, q.y, q.z);
     }

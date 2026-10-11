@@ -135,7 +135,15 @@ export class Controller {
     if (t.kind === "constellation") this.focus({ constellation: t.id });
     else if (t.kind === "topic") this.focus({ topic: t.slug });
     else if (t.kind === "note") this.focus({ topic: t.topic, note: t.id });
-    else this.toast(`${this.world.episodes.count} episodes wait in the inbox for consolidation.`);
+    else if (t.kind === "link") {
+      // Go to the end you are not already on.
+      const end = this.store.state.focus.note === t.to.id ? t.from : t.to;
+      this.focus({ topic: end.topic, note: end.id });
+    } else if (t.kind === "flow") {
+      const f = this.store.state.focus;
+      if (t.level === "constellation") this.focus({ constellation: f.constellation === t.b ? t.a : t.b });
+      else this.focus({ topic: f.topic === t.b ? t.a : t.b });
+    } else this.toast(`${this.world.episodes.count} episodes wait in the inbox for consolidation.`);
   }
 
   /** Zooming far out of the focus pops up a level, like leaving a city on a map. */
