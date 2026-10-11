@@ -158,7 +158,6 @@ function HoverCard({ c }: { c: Controller }) {
     lines = [`${t.notes} notes${t.recent ? ` · ${t.recent} this week` : ""}`, t.flagged ? `${t.flagged} flagged` : "No open issues"];
   } else if (target.kind === "note") {
     const t = c.world.topics.find((k) => k.slug === target.topic);
-    const layer = c.galaxy;
     const nodes = data?.slug === target.topic ? data.nodes : undefined;
     const n = nodes?.find((k) => k.id === target.id);
     kicker = t?.title ?? "Note";
@@ -168,7 +167,6 @@ function HoverCard({ c }: { c: Controller }) {
       lines = [[n.kind === "hub" ? "hub" : n.type, n.status !== "active" ? n.status : null, `${n.degree} links`].filter(Boolean).join(" · ")];
       flags = n.flags;
     }
-    void layer;
   } else {
     kicker = "Inbox";
     title = `${c.world.episodes.count} pending episodes`;
@@ -226,6 +224,7 @@ export function App({ c }: { c: Controller }) {
   const toast = useStore(c.store, (s) => s.toast);
   const run = useStore(c.store, (s) => s.run);
   const health = useStore(c.store, (s) => s.health);
+  const sceneError = useStore(c.store, (s) => s.sceneError);
 
   useEffect(() => {
     if (stage.current && !c.galaxy) c.mount(stage.current);
@@ -264,10 +263,22 @@ export function App({ c }: { c: Controller }) {
   return (
     <div class="app">
       <div class="stage" ref={stage} />
+      {sceneError && (
+        <div class="panel scene-error" role="alert">
+          <h2>The 3D map could not start</h2>
+          <p class="scene-error-detail">{sceneError}</p>
+          <p>
+            It needs WebGL2 with hardware acceleration. Turn on hardware acceleration in your browser settings, then
+            check <code>chrome://gpu</code> (or <code>about:support</code> in Firefox) for WebGL2 marked hardware
+            accelerated. Remote desktop sessions often have no GPU.
+          </p>
+          <p>The navigator, search, and inspector still work.</p>
+        </div>
+      )}
       <TopBar c={c} />
       <Navigator c={c} />
       <Inspector c={c} />
-      <Minimap c={c} />
+      {!sceneError && <Minimap c={c} />}
       <Dock c={c} />
       <HoverCard c={c} />
       {run && (

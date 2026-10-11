@@ -919,8 +919,8 @@ export class Galaxy {
     if (this.frameTimes.length > 60) this.frameTimes.shift();
     const avg = this.frameTimes.reduce((s, x) => s + x, 0) / this.frameTimes.length;
     this.fps = avg > 0 ? 1 / avg : 0;
-    // Pick a quality once, from the first two seconds of real frames.
-    if (!this.forcedQuality && this.clock.elapsedTime > 2 && this.clock.elapsedTime < 2.2 && this.frameTimes.length >= 30) {
+    // Pick a quality once, after two seconds of real frames; a slow GPU may not even reach 15 fps.
+    if (!this.forcedQuality && this.clock.elapsedTime > 2 && this.frameTimes.length >= 20) {
       const q: Quality = avg > 1 / 28 ? "low" : "high";
       this.forcedQuality = q;
       if (q !== this.quality) {

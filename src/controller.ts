@@ -24,6 +24,8 @@ export interface AppState {
   run: RunSummary | null;
   toast: string | null;
   embedded: boolean;
+  /** Why the 3D scene could not start; the HUD keeps working without it. */
+  sceneError: string | null;
 }
 
 /** Glue between the scene, the HUD and the data source; the HUD only calls these methods. */
@@ -58,20 +60,28 @@ export class Controller {
       run: null,
       toast: null,
       embedded: source.embedded,
+      sceneError: null,
     });
   }
 
   mount(container: HTMLElement): void {
     const q = new URLSearchParams(location.search).get("quality");
-    this.galaxy = new Galaxy(container, this.world, this.source, {
-      hover: (target, x, y) => this.store.set({ hover: target ? { target, x, y } : null }),
-      select: (t) => this.select(t),
-      view: () => this.autoPop(),
-      quality: (quality, auto) => {
-        this.store.set({ quality });
-        if (auto && quality === "low") this.toast("Low quality: this GPU is slow, so bloom is off. Switch in the dock.");
-      },
-    }, q === "high" || q === "low" ? q : null);
+    try {
+      this.galaxy = new Galaxy(container, this.world, this.source, {
+        hover: (target, x, y) => this.store.set({ hover: target ? { target, x, y } : null }),
+        select: (t) => this.select(t),
+        view: () => this.autoPop(),
+        quality: (quality, auto) => {
+          this.store.set({ quality });
+          if (auto && quality === "low") this.toast("Low quality: this GPU is slow, so bloom is off. Switch in the dock.");
+        },
+      }, q === "high" || q === "low" ? q : null);
+    } catch (err) {
+      // Usually no WebGL2 (hardware acceleration off, remote desktop); say so instead of a blank stage.
+      container.replaceChildren();
+      this.store.set({ sceneError: err instanceof Error ? err.message : String(err) });
+      console.error("brain viz: the 3D scene could not start", err);
+    }
     window.addEventListener("hashchange", () => this.applyHash());
     this.applyHash();
     (window as unknown as { __brainViz: unknown }).__brainViz = { controller: this, galaxy: this.galaxy, ready: true };
