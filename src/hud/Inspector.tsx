@@ -18,8 +18,12 @@ const REL_LABEL: Record<Rel, string> = {
 };
 
 /** `[[target|alias]]` → `alias`, `[[target]]` → `target`; the result is still rendered as text. */
+/** Note text is shown as plain text, never rendered: drop wikilink brackets and emphasis markers. */
 function plainLinks(s: string): string {
-  return s.replace(/\[\[([^\]|]+)(?:\|([^\]]+))?\]\]/g, (_, target: string, alias?: string) => alias ?? target);
+  return s
+    .replace(/\[\[([^\]|]+)(?:\|([^\]]+))?\]\]/g, (_, target: string, alias?: string) => alias ?? target)
+    .replace(/(\*\*|__)(.+?)\1/g, "$2")
+    .replace(/`([^`]+)`/g, "$1");
 }
 
 const REL_FAMILY: Record<Rel, Family> = {

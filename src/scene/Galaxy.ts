@@ -79,7 +79,7 @@ interface TopicLayer {
   index: Map<string, number>;
   nodes: NodeData[];
   world: Float32Array;
-  lines: Map<Family, LineSegments2>;
+  lines: Map<Family, LineSegments2[]>;
   fade: number;
   target: number;
 }
@@ -422,13 +422,22 @@ export class Galaxy {
   private lineMaterial(key: string, width: number, opacity: number, dashed: boolean): LineMaterial {
     let m = this.lineMats.get(key);
     if (!m) {
-      m = new LineMaterial({ color: 0xffffff, linewidth: width, vertexColors: true, transparent: true, opacity, dashed, dashSize: 7, gapSize: 6, dashScale: 1, worldUnits: false });
+      // Dashed materials draw short pulses over a solid trail (see trail()), not a broken line.
+      m = new LineMaterial({ color: 0xffffff, linewidth: width, vertexColors: true, transparent: true, opacity, dashed, dashSize: 2.5, gapSize: 16, dashScale: 1, worldUnits: false });
       m.depthWrite = false;
       m.blending = THREE.AdditiveBlending;
       m.resolution.set(this.container.clientWidth, this.container.clientHeight);
       this.lineMats.set(key, m);
     }
     return m;
+  }
+
+  /** A typed trail: always a solid line; directed families add pulses running along it when motion is on. */
+  private trail(pos: number[], colors: number[], key: string, width: number, opacity: number, directed: boolean): LineSegments2[] {
+    const pulsed = directed && this.motion;
+    const base = this.segments(pos, colors, this.lineMaterial(key, width, pulsed ? opacity * 0.55 : opacity, false));
+    if (!pulsed) return [base];
+    return [base, this.segments(pos, colors, this.lineMaterial(`${key}:pulse`, width + 0.8, Math.min(1, opacity + 0.2), true))];
   }
 
   private segments(pos: number[], colors: number[], material: LineMaterial): LineSegments2 {
@@ -622,13 +631,15 @@ export class Galaxy {
       const c = family === "part_of" ? [tr * 0.6, tg * 0.6, tb * 0.6] : rgb(FAMILY_COLORS[family]);
       bucket.colors.push(c[0] * 0.55, c[1] * 0.55, c[2] * 0.55, c[0], c[1], c[2]);
     }
-    const lines = new Map<Family, LineSegments2>();
+    const lines = new Map<Family, LineSegments2[]>();
     for (const [family, b] of perFamily) {
       const st = FAMILY_STYLE[family];
-      const line = this.segments(b.pos, b.colors, this.lineMaterial(`fam:${family}`, st.width, st.opacity, st.dashed && this.motion));
-      line.visible = this.layers[family];
-      group.add(line);
-      lines.set(family, line);
+      const trail = this.trail(b.pos, b.colors, `fam:${family}`, st.width, st.opacity, st.dashed);
+      for (const line of trail) {
+        line.visible = false;
+        group.add(line);
+      }
+      lines.set(family, trail);
     }
     this.scene.add(group);
     return { slug: data.slug, data, center, radius: p.r, group, stars, material, state, sizes, ids: placement.ids, index, nodes, world, lines, fade: 0, target: 1 };
@@ -639,7 +650,7 @@ export class Galaxy {
     layer.stars.geometry.dispose();
     layer.material.dispose();
     this.starMats.delete(layer.material);
-    for (const line of layer.lines.values()) line.geometry.dispose();
+    for (const trail of layer.lines.values()) for (const line of trail) line.geometry.dispose();
   }
 
   // --- state -------------------------------------------------------------------------------
@@ -701,7 +712,7 @@ export class Galaxy {
     }
     for (const [family, b] of per) {
       const st = FAMILY_STYLE[family];
-      this.focusLines.add(this.segments(b.pos, b.colors, this.lineMaterial(`focus:${family}`, st.width + 1, Math.min(1, st.opacity + 0.25), st.dashed && this.motion)));
+      for (const line of this.trail(b.pos, b.colors, `focus:${family}`, st.width + 1, Math.min(1, st.opacity + 0.25), st.dashed)) this.focusLines.add(line);
     }
   }
 
@@ -715,7 +726,7 @@ export class Galaxy {
   setLayers(layers: Layers): void {
     this.layers = { ...layers };
     for (const layer of this.revealed.values()) {
-      for (const [family, line] of layer.lines) line.visible = this.layers[family];
+      for (const [family, trail] of layer.lines) for (const line of trail) line.visible = this.layers[family] && layer.fade > 0.05;
     }
   }
 
@@ -939,9 +950,9 @@ export class Galaxy {
       layer.fade += (layer.target - layer.fade) * k;
       layer.material.uniforms.uFade.value = layer.fade;
       layer.material.uniforms.uTime.value = t;
-      const lineOpacity = Math.max(0, Math.min(1, layer.fade));
       layer.group.visible = layer.fade > 0.02;
-      for (const line of layer.lines.values()) (line.material as LineMaterial).visible = lineOpacity > 0.05;
+      // Per object: the materials are shared, so one fading topic must not hide every topic's trails.
+      for (const [family, trail] of layer.lines) for (const line of trail) line.visible = this.layers[family] && layer.fade > 0.05;
       if (layer.target === 0 && layer.fade < 0.03) {
         this.disposeLayer(layer);
         this.revealed.delete(slug);
@@ -949,7 +960,7 @@ export class Galaxy {
     }
     if (this.motion) {
       for (const [key, m] of this.lineMats) {
-        if (m.dashed) m.dashOffset -= dt * (key === "fam:supersedes" ? 9 : 14);
+        if (m.dashed) m.dashOffset -= dt * (key.includes("supersedes") ? 9 : 14);
       }
     }
   }
