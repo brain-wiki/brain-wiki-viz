@@ -2,14 +2,15 @@
   "name": "brain-wiki-viz",
   "private": true,
   "version": "0.0.0",
-  "description": "Source of the brain viz front end; the build is committed to src/brainwiki/viz/app/.",
+  "description": "The brain-wiki visualizer front end; builds into brain-wiki's src/brainwiki/viz/app/.",
   "license": "Apache-2.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc --noEmit && vite build && node scripts/notices.mjs",
-    "check": "tsc --noEmit && vitest run",
-    "test": "vitest run"
+    "build": "tsc --noEmit && vite build && node scripts/notices.mjs && node scripts/build-info.mjs",
+    "check": "tsc --noEmit && vitest run && node scripts/check-lock.mjs",
+    "test": "vitest run",
+    "verify": "node scripts/verify.mjs"
   },
   "dependencies": {
     "camera-controls": "2.10.1",

@@ -1,7 +1,7 @@
-import { fileURLToPath } from "node:url";
 import { defineConfig } from "vite";
+import { appDir } from "./scripts/app-dir.mjs";
 
-const outDir = fileURLToPath(new URL("../src/brainwiki/viz/app", import.meta.url));
+const outDir = appDir();
 
 export default defineConfig({
   esbuild: { jsx: "automatic", jsxImportSource: "preact" },
