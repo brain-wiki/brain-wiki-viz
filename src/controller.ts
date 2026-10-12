@@ -53,7 +53,10 @@ export class Controller {
   ) {
     this.constellationOf = new Map(world.topics.map((t) => [t.slug, t.constellation]));
     this.trail = new Trail(restoreTrail(`brainviz.trail:${world.brain}:${location.pathname}`));
-    const quality = new URLSearchParams(location.search).get("quality");
+    // Low by default: the map reads fine without glow and runs on any GPU. A ?quality= URL wins,
+    // then the user's last choice.
+    const asked = new URLSearchParams(location.search).get("quality");
+    const mode: QualityMode = isQualityMode(asked) ? asked : (savedGraphics() ?? "low");
     this.store = new Store<AppState>({
       world,
       focus: {},
@@ -64,8 +67,8 @@ export class Controller {
       layers: Object.fromEntries(FAMILIES.map((f) => [f, f !== "links_to" && f !== "part_of"])) as Layers,
       health: false,
       labels: true,
-      quality: quality === "low" ? "low" : "high",
-      qualityMode: quality === "high" || quality === "low" ? quality : "auto",
+      quality: mode === "low" ? "low" : "high",
+      qualityMode: mode,
       navOpen: true,
       navTab: "atlas",
       paletteOpen: false,
@@ -262,6 +265,11 @@ export class Controller {
   setQualityMode(mode: QualityMode): void {
     this.store.set({ qualityMode: mode, ...(mode === "auto" ? {} : { quality: mode }) });
     this.galaxy?.setQualityMode(mode);
+    try {
+      localStorage.setItem(GRAPHICS_KEY, mode);
+    } catch {
+      // No storage (private mode, some file:// exports): the choice lasts for this page only.
+    }
   }
 
   setRun(run: RunSummary | null): void {
@@ -301,5 +309,20 @@ function restoreTrail(key: string): TrailState | undefined {
     return state && Array.isArray(state.entries) && typeof state.index === "number" ? state : undefined;
   } catch {
     return undefined;
+  }
+}
+
+const GRAPHICS_KEY = "brainviz.graphics";
+
+function isQualityMode(v: string | null): v is QualityMode {
+  return v === "auto" || v === "high" || v === "low";
+}
+
+function savedGraphics(): QualityMode | null {
+  try {
+    const v = localStorage.getItem(GRAPHICS_KEY);
+    return isQualityMode(v) ? v : null;
+  } catch {
+    return null;
   }
 }
