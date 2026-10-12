@@ -10,7 +10,7 @@ import { ShaderPass } from "three/addons/postprocessing/ShaderPass.js";
 import { UnrealBloomPass } from "three/addons/postprocessing/UnrealBloomPass.js";
 import type { Source } from "../api";
 import { galaxyLayout, topicLayout, type GalaxyLayout, type Placed } from "../layout";
-import { chooseRevealed, healthSeverity, levelOf, projectedRadius, type Focus } from "../lod";
+import { chooseRevealed, healthSeverity, levelOf, projectedRadius, type Focus, type ViewSample } from "../lod";
 import { FLAGS, type NodeData, type Rel, type RunSummary, type TopicData, type TopicSummary, type World } from "../types";
 import { gaussian, rng } from "../util/rand";
 import { LabelLayer, type LabelCandidate } from "./labels";
@@ -85,6 +85,8 @@ const FAMILY_STYLE: Record<Family, { width: number; opacity: number; dashed: boo
 };
 
 export type Quality = "high" | "low";
+/** What the user chose: a fixed quality, or let the map measure the GPU. */
+export type QualityMode = "auto" | Quality;
 
 /** Camera tilt from straight down, in radians. The view is a 2.5D map: fixed tilt and heading. */
 const TILT = 0.68;
@@ -93,7 +95,8 @@ const VIEW_DIR = new THREE.Vector3(0, Math.cos(TILT), Math.sin(TILT));
 export interface GalaxyEvents {
   hover(t: Target | null, x: number, y: number): void;
   select(t: Target | null): void;
-  view(): void;
+  /** Each level-of-detail tick: what the camera is looking at, and whether the user moved it. */
+  view(sample: ViewSample, userDriven: boolean): void;
   quality(q: Quality, auto: boolean): void;
 }
 
@@ -226,16 +229,18 @@ export class Galaxy {
   private focus: Focus = {};
   private neighborhood = new Map<string, number>();
   private run: RunSummary | null = null;
-  private layers: Layers = { part_of: true, depends_on: true, conflicts_with: true, supersedes: true, related_to: true, links_to: false };
+  private layers: Layers = { part_of: false, depends_on: true, conflicts_with: true, supersedes: true, related_to: true, links_to: false };
   private health = false;
   private severity: Float32Array;
   private dustSeverity: Float32Array;
   private motion = !window.matchMedia("(prefers-reduced-motion: reduce)").matches;
   private quality: Quality = "high";
-  private forcedQuality: Quality | null;
+  private qualityMode: QualityMode = "auto";
+  private autoDecided = false;
+  private autoFrom = 1.5;
+  private autoSamples: number[] = [];
   private frameTimes: number[] = [];
   private lastLod = 0;
-  private lastView = 0;
   private pointer = { x: 0, y: 0, down: false, dx: 0, dy: 0, moved: false, dirty: false, inside: false };
   private hovered: string | null = null;
   private flowHits: FlowHit[] = [];
@@ -255,10 +260,10 @@ export class Galaxy {
     private world: World,
     private source: Source,
     private events: GalaxyEvents,
-    quality: Quality | null,
+    quality: QualityMode,
   ) {
-    this.forcedQuality = quality;
-    if (quality) this.quality = quality;
+    this.qualityMode = quality;
+    if (quality !== "auto") this.quality = quality;
     this.topics = world.topics;
     world.topics.forEach((t, i) => {
       this.topicIndex.set(t.slug, i);
@@ -294,9 +299,18 @@ export class Galaxy {
     this.controls.touches.one = CameraControls.ACTION.TOUCH_SCREEN_PAN;
     this.controls.touches.two = CameraControls.ACTION.TOUCH_DOLLY;
     this.controls.touches.three = CameraControls.ACTION.NONE;
+    // Any direct input means the user now owns the camera: scrolling and dragging may change the
+    // level (camera-controls signals drags with controlstart, but not wheel zooms).
     this.controls.addEventListener("controlstart", () => {
       this.userDriven = true;
     });
+    this.renderer.domElement.addEventListener(
+      "wheel",
+      () => {
+        this.userDriven = true;
+      },
+      { passive: true },
+    );
 
     this.groups = new GroupTexture(this.topics.length);
     this.dustGroups = new GroupTexture(world.constellations.length);
@@ -807,9 +821,17 @@ export class Galaxy {
     this.labels.setVisible(on);
   }
 
-  setQuality(q: Quality): void {
-    this.forcedQuality = q;
-    this.quality = q;
+  /** A fixed quality, or "auto" to measure again from now. */
+  setQualityMode(mode: QualityMode): void {
+    this.qualityMode = mode;
+    if (mode !== "auto") {
+      this.quality = mode;
+      return;
+    }
+    this.quality = "high";
+    this.autoDecided = false;
+    this.autoSamples = [];
+    this.autoFrom = this.clock.elapsedTime + 1.5;
   }
 
   private refreshGroups(): void {
@@ -910,19 +932,6 @@ export class Galaxy {
   }
 
   /** Distance from the camera to the current focus, relative to its size (for auto pop-up). */
-  focusDistance(): { level: "topic" | "constellation"; ratio: number } | null {
-    const pos = this.camera.position;
-    if (this.focus.topic && !this.focus.note) {
-      const p = this.layout.topics.get(this.focus.topic);
-      if (p) return { level: "topic", ratio: pos.distanceTo(new THREE.Vector3(p.x, p.y, p.z)) / p.r };
-    }
-    if (this.focus.constellation && !this.focus.topic) {
-      const p = this.layout.constellations.get(this.focus.constellation);
-      if (p) return { level: "constellation", ratio: pos.distanceTo(new THREE.Vector3(p.x, p.y, p.z)) / p.r };
-    }
-    return null;
-  }
-
   // --- per frame --------------------------------------------------------------------------
 
   private pointScale(): number {
@@ -948,16 +957,12 @@ export class Galaxy {
     if (this.disposed) return;
     const dt = Math.min(0.1, this.clock.getDelta());
     const t = this.clock.elapsedTime;
-    const moved = this.controls.update(dt);
+    this.controls.update(dt);
     this.trackFps(dt);
     const now = performance.now();
     if (now - this.lastLod > 120) {
       this.lastLod = now;
       this.updateLod();
-    }
-    if (moved && now - this.lastView > 120) {
-      this.lastView = now;
-      this.events.view();
     }
     this.animate(dt, t);
     if (this.pointer.dirty) {
@@ -978,15 +983,19 @@ export class Galaxy {
     if (this.frameTimes.length > 60) this.frameTimes.shift();
     const avg = this.frameTimes.reduce((s, x) => s + x, 0) / this.frameTimes.length;
     this.fps = avg > 0 ? 1 / avg : 0;
-    // Pick a quality once, after two seconds of real frames; a slow GPU may not even reach 15 fps.
-    if (!this.forcedQuality && this.clock.elapsedTime > 2 && this.frameTimes.length >= 20) {
-      const q: Quality = avg > 1 / 28 ? "low" : "high";
-      this.forcedQuality = q;
-      if (q !== this.quality) {
-        this.quality = q;
-        this.events.quality(q, true);
-      }
-    }
+    // Auto: skip the first 1.5 s (shader compiles, topic loads), sample 2.5 s of frames, and
+    // judge by the median so a few stalls cannot make a fast GPU look slow.
+    if (this.qualityMode !== "auto" || this.autoDecided) return;
+    const t = this.clock.elapsedTime;
+    if (t < this.autoFrom) return;
+    this.autoSamples.push(dt);
+    if (t < this.autoFrom + 2.5 || this.autoSamples.length < 20) return;
+    const sorted = [...this.autoSamples].sort((a, b) => a - b);
+    const q: Quality = sorted[sorted.length >> 1] > 1 / 30 ? "low" : "high";
+    this.autoDecided = true;
+    this.autoSamples = [];
+    this.quality = q;
+    this.events.quality(q, true);
   }
 
   private animate(dt: number, t: number): void {
@@ -1013,6 +1022,45 @@ export class Galaxy {
     }
   }
 
+  /** The topic and constellation nearest the point the camera looks at, and how much of the screen they fill. */
+  private viewSample(h: number): ViewSample {
+    const target = this.controls.getTarget(new THREE.Vector3(), false);
+    const cam = this.camera.position;
+    const flat = (x: number, z: number) => Math.hypot(x - target.x, z - target.z);
+    let nearTopic: ViewSample["nearTopic"] = null;
+    let best = 1.6;
+    for (const t of this.topics) {
+      const p = this.layout.topics.get(t.slug)!;
+      const d = flat(p.x, p.z) / p.r;
+      if (d < best) {
+        best = d;
+        nearTopic = { slug: t.slug, constellation: t.constellation, size: (this.topicPx.get(t.slug) ?? 0) / h };
+      }
+    }
+    const conSize = (id: string) => {
+      const p = this.layout.constellations.get(id);
+      return p ? projectedRadius(p.r, cam.distanceTo(new THREE.Vector3(p.x, p.y, p.z)), h, this.camera.fov) / h : 0;
+    };
+    let nearConstellation: ViewSample["nearConstellation"] = null;
+    best = 1.3;
+    for (const c of this.world.constellations) {
+      const p = this.layout.constellations.get(c.id)!;
+      const d = flat(p.x, p.z) / p.r;
+      if (d < best) {
+        best = d;
+        nearConstellation = { id: c.id, size: conSize(c.id) };
+      }
+    }
+    return {
+      nearTopic,
+      nearConstellation,
+      focusTopicSize: this.focus.topic ? (this.topicPx.get(this.focus.topic) ?? 0) / h : 0,
+      focusConstellationSize: this.focus.constellation ? conSize(this.focus.constellation) : 0,
+      multi: this.world.constellations.length > 1,
+      only: this.world.constellations.length === 1 ? this.world.constellations[0].id : undefined,
+    };
+  }
+
   private updateLod(): void {
     const h = this.container.clientHeight || 1;
     const frustum = new THREE.Frustum().setFromProjectionMatrix(
@@ -1027,6 +1075,7 @@ export class Galaxy {
       this.topicPx.set(t.slug, px);
       return { slug: t.slug, px, visible: frustum.intersectsSphere(sphere) };
     });
+    this.events.view(this.viewSample(h), this.userDriven);
     const current = new Set([...this.revealed].filter(([, l]) => l.target > 0).map(([s]) => s));
     const next = chooseRevealed(cands, current);
     if (this.focus.topic) next.add(this.focus.topic);

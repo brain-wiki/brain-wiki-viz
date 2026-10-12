@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "preact/hooks";
+import { useEffect, useRef, useState } from "preact/hooks";
 import type { Visit } from "../history";
 import type { Controller } from "../controller";
 import { FAMILIES, FAMILY_COLORS, shortTitle, type Family, type LinkEnd, type Target } from "../scene/Galaxy";
@@ -16,7 +16,7 @@ const FAMILY_LABEL: Record<Family, string> = {
   conflicts_with: "Conflicts",
   supersedes: "Supersedes",
   related_to: "Related",
-  links_to: "Body links",
+  links_to: "Wikilinks",
 };
 
 const FAMILY_HINT: Record<Family, string> = {
@@ -25,7 +25,7 @@ const FAMILY_HINT: Record<Family, string> = {
   conflicts_with: "Conflicts: two notes contradict each other",
   supersedes: "Supersedes: pulses run from the old note to the one that replaced it",
   related_to: "Related: a loose association, no direction",
-  links_to: "Body links: wikilinks inside note text",
+  links_to: "Wikilinks: links written inside note text",
 };
 
 function Logo() {
@@ -69,6 +69,49 @@ function Breadcrumb({ c }: { c: Controller }) {
         </span>
       ))}
     </nav>
+  );
+}
+
+/**
+ * The level ladder next to the minimap: which level the map is showing, the place at that level,
+ * and how close scrolling is to the next one. Clicking a level above the current one goes there.
+ */
+function LevelHud({ c }: { c: Controller }) {
+  const focus = useStore(c.store, (s) => s.focus);
+  const zoom = useStore(c.store, (s) => s.zoom);
+  const note = useStore(c.store, (s) => s.note);
+  const multi = c.world.constellations.length > 1;
+  const con = c.world.constellations.find((x) => x.id === focus.constellation);
+  const topic = c.world.topics.find((t) => t.slug === focus.topic);
+  const current = focus.note ? 3 : focus.topic ? 2 : focus.constellation && multi ? 1 : multi ? 0 : 1;
+  const rungs = [
+    { level: 0, name: "Galaxy", place: multi ? `${c.world.constellations.length} constellations` : "", go: () => c.focus({}) },
+    { level: 1, name: "Constellation", place: con ? shortTitle(con.title) : "", go: () => con && c.focus({ constellation: con.id }) },
+    { level: 2, name: "Topic", place: topic?.title ?? "", go: () => topic && c.focus({ topic: topic.slug }) },
+    { level: 3, name: "Note", place: focus.note ? (note?.title ?? "") : "", go: () => undefined },
+  ].filter((r) => multi || r.level > 0);
+  const first = rungs[0].level;
+  const span = 3 - first;
+  const marker = Math.max(0, Math.min(1, (Math.max(zoom, first) - first) / span));
+  return (
+    <div class="panel level-hud" aria-label="Map level">
+      <div class="minimap-label">LEVEL</div>
+      <div class="level-track">
+        <div class="level-rail" />
+        <div class="level-marker" style={{ top: `${marker * 100}%` }} />
+      </div>
+      <ol class="level-rungs">
+        {rungs.map((r) => (
+          <li key={r.level} class={`level-rung${r.level === current ? " current" : ""}${r.level < current ? " above" : ""}`}>
+            <button disabled={r.level >= current} onClick={r.go} title={r.level < current ? `Back to the ${r.name.toLowerCase()} level` : undefined}>
+              <span class="level-name">{r.name}</span>
+              {r.place && r.level <= current && <span class="level-place">{r.place}</span>}
+            </button>
+          </li>
+        ))}
+      </ol>
+      <div class="level-hint">{current < 2 ? "Scroll to zoom in" : current === 2 ? "Click a star to open a note" : "Scroll out to leave"}</div>
+    </div>
   );
 }
 
@@ -159,8 +202,12 @@ function TopBar({ c }: { c: Controller }) {
         <div><b>{fmt(w.totals.topics)}</b><span>topics</span></div>
         <div><b>{fmt(w.totals.notes)}</b><span>notes</span></div>
         <div><b>{fmt(w.totals.links)}</b><span>links</span></div>
-        <div class={w.totals.flagged ? "warn" : ""}><b>{fmt(w.totals.flagged)}</b><span>flagged</span></div>
-        <div class="gold"><b>{fmt(w.episodes.count)}</b><span>inbox</span></div>
+        <button class={`total${w.totals.flagged ? " warn" : ""}`} onClick={() => c.setNav("health")} title="Show flagged notes in the Health tab">
+          <b>{fmt(w.totals.flagged)}</b><span>flagged</span>
+        </button>
+        <button class="total gold" onClick={() => c.select({ kind: "inbox" })} title="What is waiting in the inbox">
+          <b>{fmt(w.episodes.count)}</b><span>inbox</span>
+        </button>
       </div>
     </header>
   );
@@ -169,14 +216,13 @@ function TopBar({ c }: { c: Controller }) {
 function Dock({ c }: { c: Controller }) {
   const layers = useStore(c.store, (s) => s.layers);
   const health = useStore(c.store, (s) => s.health);
-  const labels = useStore(c.store, (s) => s.labels);
-  const quality = useStore(c.store, (s) => s.quality);
   return (
+    <div class="dock-wrap">
     <div class="panel dock" role="toolbar" aria-label="Layers">
       <div class="dock-group">
         {FAMILIES.map((f) => (
-          <button key={f} class={`layer${layers[f] ? " on" : ""}`} aria-pressed={layers[f]} onClick={() => c.setLayer(f, !layers[f])} title={FAMILY_HINT[f]}>
-            <span class="swatch" style={{ background: FAMILY_COLORS[f], boxShadow: layers[f] ? `0 0 10px ${FAMILY_COLORS[f]}` : "none" }} />
+          <button key={f} class={`layer fam${layers[f] ? " on" : " off"}`} aria-pressed={layers[f]} onClick={() => c.setLayer(f, !layers[f])} title={`${FAMILY_HINT[f]} (${layers[f] ? "shown" : "hidden"})`}>
+            <span class="swatch" style={layers[f] ? { background: FAMILY_COLORS[f], boxShadow: `0 0 10px ${FAMILY_COLORS[f]}` } : { borderColor: FAMILY_COLORS[f] }} />
             <span>{FAMILY_LABEL[f]}</span>
           </button>
         ))}
@@ -186,19 +232,64 @@ function Dock({ c }: { c: Controller }) {
         <button class={`layer${health ? " on health" : ""}`} aria-pressed={health} onClick={() => c.setHealth(!health)} title="Health mode (H)">
           <Icon name="health" /> <span>Health</span>
         </button>
-        <button class={`layer${labels ? " on" : ""}`} aria-pressed={labels} onClick={() => c.setLabels(!labels)} title="Labels (L)">
-          <Icon name="labels" /> <span>Labels</span>
-        </button>
-        <button class="layer" onClick={() => c.setQuality(quality === "high" ? "low" : "high")} title="Rendering quality">
-          <Icon name="spark" /> <span>{quality === "high" ? "High" : "Low"}</span>
-        </button>
-        <button class="layer" onClick={() => c.focus({})} title="Reset view (R)">
-          <Icon name="reset" /> <span>Reset</span>
-        </button>
-        <button class="layer" onClick={() => c.store.set({ helpOpen: true })} title="Shortcuts (?)">
+        <MoreMenu c={c} />
+        <button class="layer" onClick={() => c.store.set({ helpOpen: true })} title="Shortcuts (?)" aria-label="Shortcuts">
           <Icon name="help" />
         </button>
       </div>
+    </div>
+    </div>
+  );
+}
+
+/** Settings people rarely touch: labels and graphics quality. */
+function MoreMenu({ c }: { c: Controller }) {
+  const labels = useStore(c.store, (s) => s.labels);
+  const quality = useStore(c.store, (s) => s.quality);
+  const mode = useStore(c.store, (s) => s.qualityMode);
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const close = (e: PointerEvent) => {
+      if (!ref.current?.contains(e.target as Node)) setOpen(false);
+    };
+    const esc = (e: KeyboardEvent) => e.key === "Escape" && setOpen(false);
+    document.addEventListener("pointerdown", close);
+    document.addEventListener("keydown", esc, true);
+    return () => {
+      document.removeEventListener("pointerdown", close);
+      document.removeEventListener("keydown", esc, true);
+    };
+  }, [open]);
+  return (
+    <div class="more" ref={ref}>
+      <button class={`layer${open ? " on" : ""}`} onClick={() => setOpen(!open)} aria-label="More settings" aria-expanded={open} title="More settings">
+        <Icon name="more" />
+      </button>
+      {open && (
+        <div class="panel more-pop" role="menu">
+          <label class="more-row">
+            <input type="checkbox" checked={labels} onChange={() => c.setLabels(!labels)} />
+            <span>Labels</span>
+            <Kbd>L</Kbd>
+          </label>
+          <div class="more-row graphics">
+            <span>Graphics</span>
+            <div class="seg" role="radiogroup" aria-label="Graphics">
+              {(["auto", "high", "low"] as const).map((m) => (
+                <button key={m} role="radio" aria-checked={mode === m} class={mode === m ? "on" : ""} onClick={() => c.setQualityMode(m)}>
+                  {m === "auto" ? "Auto" : m === "high" ? "High" : "Low"}
+                </button>
+              ))}
+            </div>
+          </div>
+          <p class="more-note">
+            Now {quality === "high" ? "High: glow, vignette and grain" : "Low: no glow, for slower GPUs"}.
+            {mode === "auto" ? " Auto measures your GPU after loading." : ""}
+          </p>
+        </div>
+      )}
     </div>
   );
 }
@@ -329,7 +420,7 @@ function Help({ c }: { c: Controller }) {
     ["Alt ←  ·  Alt →", "Back and forward through what you opened (or the buttons by the breadcrumb)"],
     ["H", "Health mode"],
     ["L", "Labels"],
-    ["R", "Reset view"],
+    ["R", "Back to the overview"],
     ["[  ]", "Previous or next topic in the constellation"],
   ];
   return (
@@ -412,6 +503,7 @@ export function App({ c }: { c: Controller }) {
       <Inspector c={c} />
       <Preview c={c} />
       {!sceneError && <Minimap c={c} />}
+      {!sceneError && <LevelHud c={c} />}
       <Dock c={c} />
       <HoverCard c={c} />
       {run && (

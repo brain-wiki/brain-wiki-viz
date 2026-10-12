@@ -35,7 +35,7 @@ export function fmt(n: number): string {
   return n >= 10000 ? `${(n / 1000).toFixed(1)}k` : n.toLocaleString();
 }
 
-export function Icon({ name }: { name: "search" | "layers" | "health" | "reset" | "help" | "labels" | "spark" | "close" | "chevron" | "back" | "copy" | "open" | "read" | "forward" | "history" }) {
+export function Icon({ name }: { name: "search" | "layers" | "health" | "reset" | "help" | "labels" | "spark" | "close" | "chevron" | "back" | "copy" | "open" | "read" | "forward" | "history" | "more" }) {
   const p: Record<string, string> = {
     search: "M10.5 3a7.5 7.5 0 0 1 5.9 12.1l4.2 4.2-1.4 1.4-4.2-4.2A7.5 7.5 0 1 1 10.5 3Zm0 2a5.5 5.5 0 1 0 0 11 5.5 5.5 0 0 0 0-11Z",
     layers: "m12 3 9 5-9 5-9-5 9-5Zm-9 9 9 5 9-5M3 16l9 5 9-5",
@@ -48,6 +48,7 @@ export function Icon({ name }: { name: "search" | "layers" | "health" | "reset" 
     chevron: "m9 6 6 6-6 6",
     back: "m15 6-6 6 6 6",
     forward: "m9 6 6 6-6 6",
+    more: "M5.5 12a1 1 0 1 0 2 0a1 1 0 1 0-2 0M11 12a1 1 0 1 0 2 0a1 1 0 1 0-2 0M16.5 12a1 1 0 1 0 2 0a1 1 0 1 0-2 0",
     history: "M12 7v5l3 2M4.5 12a7.5 7.5 0 1 0 2.2-5.3M4 4v4h4",
     copy: "M8 8h11v11H8zM5 16V5h11",
     open: "M14 4h6v6m0-6-9 9M10 6H5v13h13v-5",

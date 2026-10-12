@@ -41,6 +41,13 @@ export class Trail {
     return this.index;
   }
 
+  /** Swap the current entry in place (scrolling between levels), keeping what lies ahead. */
+  replace(v: Visit): number {
+    if (this.index < 0) return this.visit(v);
+    this.entries = this.entries.map((e, i) => (i === this.index ? v : e));
+    return this.index;
+  }
+
   /** Move to an entry the browser already navigated to (back, forward, or a jump). */
   moveTo(index: number): Visit | undefined {
     if (index < 0 || index >= this.entries.length) return undefined;

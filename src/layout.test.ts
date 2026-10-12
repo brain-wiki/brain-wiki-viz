@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { galaxyLayout, topicLayout, topicRadius } from "./layout";
-import { chooseRevealed, focusToHash, hashToFocus, healthSeverity, levelOf, parentFocus, projectedRadius } from "./lod";
+import { chooseRevealed, focusToHash, hashToFocus, healthSeverity, levelOf, parentFocus, projectedRadius, viewFocus } from "./lod";
 import type { Constellation, TopicData, TopicSummary } from "./types";
 
 function topic(slug: string, notes: number, constellation: string): TopicSummary {
@@ -106,5 +106,30 @@ describe("level of detail", () => {
     expect(s[0]).toBeCloseTo(0.15);
     expect(s[3]).toBeGreaterThan(s[0]);
     expect(s[3]).toBeLessThan(s[2]);
+  });
+});
+
+describe("viewFocus", () => {
+  const base = { nearTopic: null, nearConstellation: null, focusTopicSize: 0, focusConstellationSize: 0, multi: true };
+  it("enters a constellation, then a topic, as you zoom in", () => {
+    expect(viewFocus({}, { ...base, nearConstellation: { id: "c1", size: 0.3 } }).focus).toEqual({ constellation: "c1" });
+    const t = viewFocus({ constellation: "c1" }, { ...base, nearTopic: { slug: "a", constellation: "c1", size: 0.25 }, focusConstellationSize: 0.6 });
+    expect(t.focus).toEqual({ constellation: "c1", topic: "a" });
+    expect(t.progress).toBe(2);
+  });
+  it("keeps a level inside the hysteresis band and leaves below it", () => {
+    const cur = { constellation: "c1", topic: "a", note: "n1" };
+    const near = { slug: "a", constellation: "c1", size: 0.16 };
+    expect(viewFocus(cur, { ...base, nearTopic: near, focusTopicSize: 0.16, focusConstellationSize: 0.5 }).focus).toEqual(cur);
+    const out = viewFocus(cur, { ...base, nearTopic: { ...near, size: 0.1 }, focusTopicSize: 0.1, focusConstellationSize: 0.5 });
+    expect(out.focus).toEqual({ constellation: "c1" });
+    expect(viewFocus({ constellation: "c1" }, { ...base, focusConstellationSize: 0.1 }).focus).toEqual({});
+  });
+  it("switches to a neighbor you pan to and creeps the indicator toward the next level", () => {
+    const pan = viewFocus({ constellation: "c1", topic: "a" }, { ...base, nearTopic: { slug: "b", constellation: "c1", size: 0.3 }, focusTopicSize: 0.2, focusConstellationSize: 0.5 });
+    expect(pan.focus.topic).toBe("b");
+    const g = viewFocus({}, { ...base, nearConstellation: { id: "c2", size: 0.13 } });
+    expect(g.focus).toEqual({});
+    expect(g.progress).toBeCloseTo(0.45);
   });
 });

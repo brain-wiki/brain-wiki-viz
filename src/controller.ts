@@ -1,7 +1,7 @@
 import type { Source } from "./api";
 import { Trail, type TrailState } from "./history";
-import { focusToHash, hashToFocus, levelOf, parentFocus, type Focus } from "./lod";
-import { FAMILIES, Galaxy, type Layers, type Quality, type Target } from "./scene/Galaxy";
+import { focusToHash, hashToFocus, levelOf, parentFocus, viewFocus, type Focus, type ViewSample } from "./lod";
+import { FAMILIES, Galaxy, type Layers, type Quality, type QualityMode, type Target } from "./scene/Galaxy";
 import { Store } from "./store";
 import type { Health, NoteDetail, RunSummary, SearchHit, TopicData, World } from "./types";
 
@@ -16,7 +16,9 @@ export interface AppState {
   layers: Layers;
   health: boolean;
   labels: boolean;
+  /** What is drawn now, and what the user chose (Auto measures the GPU). */
   quality: Quality;
+  qualityMode: QualityMode;
   navOpen: boolean;
   navTab: NavTab;
   paletteOpen: boolean;
@@ -32,6 +34,8 @@ export interface AppState {
   /** Places opened in this tab, for back, forward, and the history list. */
   trail: TrailState;
   historyOpen: boolean;
+  /** Where the view sits between levels, 0 (galaxy) to 3 (note), for the level indicator. */
+  zoom: number;
 }
 
 /** Glue between the scene, the HUD and the data source; the HUD only calls these methods. */
@@ -56,10 +60,12 @@ export class Controller {
       hover: null,
       note: null,
       topicData: null,
-      layers: Object.fromEntries(FAMILIES.map((f) => [f, f !== "links_to"])) as Layers,
+      // Part of (spokes to the hub) repeats what clustering already shows; wikilinks are noisy.
+      layers: Object.fromEntries(FAMILIES.map((f) => [f, f !== "links_to" && f !== "part_of"])) as Layers,
       health: false,
       labels: true,
       quality: quality === "low" ? "low" : "high",
+      qualityMode: quality === "high" || quality === "low" ? quality : "auto",
       navOpen: true,
       navTab: "atlas",
       paletteOpen: false,
@@ -72,21 +78,22 @@ export class Controller {
       previewOpen: false,
       trail: this.trail.state(),
       historyOpen: false,
+      zoom: 0,
     });
   }
 
   mount(container: HTMLElement): void {
-    const q = new URLSearchParams(location.search).get("quality");
     try {
       this.galaxy = new Galaxy(container, this.world, this.source, {
         hover: (target, x, y) => this.store.set({ hover: target ? { target, x, y } : null }),
         select: (t) => this.select(t),
-        view: () => this.autoPop(),
+        view: (sample, userDriven) => this.onView(sample, userDriven),
         quality: (quality, auto) => {
           this.store.set({ quality });
-          if (auto && quality === "low") this.toast("Low quality: this GPU is slow, so bloom is off. Switch in the dock.");
+          if (auto && quality === "low") this.toast("Graphics set to Low: frames were slow on this GPU, so the glow is off. Change it in the ⋯ menu.");
         },
-      }, q === "high" || q === "low" ? q : null);
+      }, this.store.state.qualityMode);
+      this.galaxy.setLayers(this.store.state.layers);
     } catch (err) {
       // Usually no WebGL2 (hardware acceleration off, remote desktop); say so instead of a blank stage.
       container.replaceChildren();
@@ -153,21 +160,25 @@ export class Controller {
 
   private applyHash(): void {
     const f = hashToFocus(location.hash, (s) => this.constellationOf.get(s));
-    if (focusToHash(f) !== focusToHash(this.store.state.focus) || !this.store.state.focus.constellation) this.focus(f, false);
+    if (focusToHash(f) !== focusToHash(this.store.state.focus) || !this.store.state.focus.constellation) this.focus(f, "none");
   }
 
-  focus(f: Focus, push = true): void {
+  /**
+   * Change what is focused. Clicks and keys `push` a history entry and fly the camera; scrolling
+   * `replace`s the current entry and leaves the camera where the user put it; following the
+   * browser's own history records nothing (`none`).
+   */
+  focus(f: Focus, history_: "push" | "replace" | "none" = "push", fly = true): void {
     if (f.topic && !f.constellation) f = { ...f, constellation: this.constellationOf.get(f.topic) };
     const prev = this.store.state.focus;
     this.store.set({ focus: f, hover: null });
-    this.galaxy?.setFocus(f);
-    if (push) {
-      const hash = focusToHash(f);
-      if (hash !== location.hash) {
-        const i = this.trail.visit({ hash, focus: f, title: this.titleOf(f) });
-        history.pushState({ brainViz: i }, "", hash);
-        this.syncTrail();
-      }
+    this.galaxy?.setFocus(f, fly);
+    const hash = focusToHash(f);
+    if (history_ !== "none" && hash !== location.hash) {
+      const visit = { hash, focus: f, title: this.titleOf(f) };
+      if (history_ === "push") history.pushState({ brainViz: this.trail.visit(visit) }, "", hash);
+      else history.replaceState({ brainViz: this.trail.replace(visit) }, "", hash);
+      this.syncTrail();
     }
     if (f.topic && f.topic !== prev.topic) {
       this.store.set({ topicData: null });
@@ -213,17 +224,15 @@ export class Controller {
       const f = this.store.state.focus;
       if (t.level === "constellation") this.focus({ constellation: f.constellation === t.b ? t.a : t.b });
       else this.focus({ topic: f.topic === t.b ? t.a : t.b });
-    } else this.toast(`${this.world.episodes.count} episodes wait in the inbox for consolidation.`);
+    } else this.toast(`${this.world.episodes.count} episodes wait in the inbox. Ask your agent to consolidate them, or run brain consolidate.`);
   }
 
-  /** Zooming far out of the focus pops up a level, like leaving a city on a map. */
-  private autoPop(): void {
-    if (!this.galaxy?.userDriven) return;
-    const d = this.galaxy.focusDistance();
-    if (!d) return;
-    const f = this.store.state.focus;
-    if (d.level === "topic" && d.ratio > 16) this.focus(parentFocus(f));
-    else if (d.level === "constellation" && d.ratio > 8 && this.world.constellations.length > 1) this.focus({});
+  /** Scrolling moves between levels like zooming a map: in enters, out leaves, panning switches. */
+  private onView(sample: ViewSample, userDriven: boolean): void {
+    const cur = this.store.state.focus;
+    const { focus, progress } = viewFocus(cur, sample);
+    if (Math.abs(progress - this.store.state.zoom) > 0.02) this.store.set({ zoom: progress });
+    if (userDriven && focusToHash(focus) !== focusToHash(cur)) this.focus(focus, "replace", false);
   }
 
   /** Select a note and open its preview: what clicking a note means everywhere in the UI. */
@@ -250,9 +259,9 @@ export class Controller {
     this.galaxy?.setLabels(on);
   }
 
-  setQuality(q: Quality): void {
-    this.store.set({ quality: q });
-    this.galaxy?.setQuality(q);
+  setQualityMode(mode: QualityMode): void {
+    this.store.set({ qualityMode: mode, ...(mode === "auto" ? {} : { quality: mode }) });
+    this.galaxy?.setQualityMode(mode);
   }
 
   setRun(run: RunSummary | null): void {
