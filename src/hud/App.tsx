@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "preact/hooks";
+import { Fragment } from "preact";
 import type { Visit } from "../history";
 import type { Controller } from "../controller";
 import { type Branch, folderTree } from "../layout";
@@ -10,10 +11,12 @@ import { Minimap } from "./Minimap";
 import { Navigator } from "./Navigator";
 import { Palette } from "./Palette";
 import { Preview } from "./Preview";
+import { bindingFor, keymap, type Binding, type Section } from "../keymap";
 import { keys } from "../util/keys";
 import { Dot, FLAG_COLOR, FLAG_LABEL, fmt, Icon, Kbd } from "./ui";
 
 const K = keys();
+const KEYMAP = keymap(K);
 
 const FAMILY_LABEL: Record<Family, string> = {
   part_of: "Folders",
@@ -245,7 +248,7 @@ function Dock({ c }: { c: Controller }) {
     <div class="panel dock" role="toolbar" aria-label="Layers">
       <div class="dock-group">
         {FAMILIES.map((f) => (
-          <button key={f} class={`layer fam${layers[f] ? " on" : " off"}`} aria-pressed={layers[f]} onClick={() => c.setLayer(f, !layers[f])} title={`${FAMILY_HINT[f]} (${layers[f] ? "shown" : "hidden"})`}>
+          <button key={f} class={`layer fam${layers[f] ? " on" : " off"}`} aria-pressed={layers[f]} onClick={() => c.setLayer(f, !layers[f])} title={`${FAMILY_HINT[f]} (${layers[f] ? "shown" : "hidden"}; ${FAMILIES.indexOf(f) + 1} toggles)`}>
             <span class="swatch" style={layers[f] ? { background: FAMILY_COLORS[f], boxShadow: `0 0 10px ${FAMILY_COLORS[f]}` } : { borderColor: FAMILY_COLORS[f] }} />
             <span>{FAMILY_LABEL[f]}</span>
           </button>
@@ -253,7 +256,7 @@ function Dock({ c }: { c: Controller }) {
       </div>
       <div class="dock-sep" />
       <div class="dock-group">
-        <button class={`layer${health ? " on health" : ""}`} aria-pressed={health} onClick={() => c.setHealth(!health)} title="Color the map by notes with issues (H)">
+        <button class={`layer${health ? " on health" : ""}`} aria-pressed={health} onClick={() => c.setHealth(!health)} title="Color the map by notes with issues (I)">
           <Icon name="health" /> <span>Highlight issues</span>
         </button>
         <MoreMenu c={c} />
@@ -278,7 +281,11 @@ function MoreMenu({ c }: { c: Controller }) {
     const close = (e: PointerEvent) => {
       if (!ref.current?.contains(e.target as Node)) setOpen(false);
     };
-    const esc = (e: KeyboardEvent) => e.key === "Escape" && setOpen(false);
+    const esc = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      e.stopPropagation(); // closing the menu is all Esc does here
+      setOpen(false);
+    };
     document.addEventListener("pointerdown", close);
     document.addEventListener("keydown", esc, true);
     return () => {
@@ -431,34 +438,100 @@ function HoverCard({ c }: { c: Controller }) {
   );
 }
 
+function Keys({ b }: { b: Binding }) {
+  // A pair sharing its modifiers reads as one chord with two keys: Alt ↑ / ↓.
+  const [first, second] = b.keys;
+  const shared =
+    b.join === "pair" && second && first.length === second.length && first.slice(0, -1).every((k, i) => k === second[i]);
+  if (shared) {
+    return (
+      <span class="keys">
+        <span class="chord">
+          {first.map((key) => (
+            <Kbd key={key}>{key}</Kbd>
+          ))}
+        </span>
+        <span class="keys-sep">/</span>
+        <Kbd>{second[second.length - 1]}</Kbd>
+      </span>
+    );
+  }
+  const sep = b.join === "range" ? "–" : b.join === "or" ? "or" : "";
+  return (
+    <span class="keys">
+      {b.keys.map((chord, i) => (
+        <Fragment key={i}>
+          {i > 0 && sep && <span class="keys-sep">{sep}</span>}
+          <span class="chord">
+            {chord.map((key) => (
+              <Kbd key={key}>{key}</Kbd>
+            ))}
+          </span>
+        </Fragment>
+      ))}
+    </span>
+  );
+}
+
+const SECTIONS: { title: Section; column: number }[] = [
+  { title: "Move", column: 0 },
+  { title: "Show", column: 1 },
+  { title: "Find", column: 1 },
+];
+
+const MOUSE: [string, string][] = [
+  ["Click", "zoom to a group or topic; open a note"],
+  ["Scroll", "zoom toward the pointer"],
+  ["Drag", "pan"],
+  ["Hover a line", "see the two notes it joins; click to go to the other end"],
+];
+
 function Help({ c }: { c: Controller }) {
-  const rows: [string, string][] = [
-    [`/  or  ${K.join(K.mod, "K")}`, "Search notes and topics"],
-    ["Click", "Zoom to a group or topic; open a note"],
-    ["P", "Show or hide the selected note's preview"],
-    ["Scroll", "Zoom toward the cursor; detail appears as you get closer"],
-    ["Drag", "Pan across the map"],
-    ["Moving pulses", "Direction: prerequisite → dependent (blue), old → new (amber)"],
-    ["Hover a trail", "See the two notes it connects; click to go to the other end"],
-    ["Esc", "Up one level, or close"],
-    [`${K.join(K.alt, "↑")}  ·  ${K.join(K.alt, "↓")}`, "Up or down one nesting level: note, folder, topic, parent topic, group"],
-    [`${K.join(K.history, "←")}  ·  ${K.join(K.history, "→")}`, "Back and forward through what you opened (or the buttons by the breadcrumb)"],
-    ["H", "Highlight issues"],
-    ["L", "Labels"],
-    ["R", "Back to the overview"],
-    ["[  ]", "Previous or next topic in the group"],
-  ];
+  const columns = [0, 1].map((col) => SECTIONS.filter((s) => s.column === col));
   return (
     <div class="palette-scrim" onClick={(e) => e.target === e.currentTarget && c.store.set({ helpOpen: false })}>
       <div class="panel help" role="dialog" aria-label="Shortcuts">
-        <h3>Shortcuts</h3>
-        {rows.map(([k, v]) => (
-          <div class="help-row" key={k}>
-            <Kbd>{k}</Kbd>
-            <span>{v}</span>
-          </div>
-        ))}
-        <p class="hint">Star size shows how connected a note is, brightness how recently it changed. Rings mark notes with issues.</p>
+        <div class="help-head">
+          <h3>Shortcuts</h3>
+          <button class="icon-btn" onClick={() => c.store.set({ helpOpen: false })} aria-label="Close" title="Close (Esc)">
+            <Icon name="close" />
+          </button>
+        </div>
+        <div class="help-cols">
+          {columns.map((sections, col) => (
+            <div class="help-col" key={col}>
+              {sections.map((section) => (
+                <Fragment key={section.title}>
+                  <h4>{section.title}</h4>
+                  {KEYMAP.filter((b) => b.section === section.title).map((b) => (
+                    <div class="help-row" key={b.does}>
+                      <Keys b={b} />
+                      <span>{b.does}</span>
+                    </div>
+                  ))}
+                </Fragment>
+              ))}
+            </div>
+          ))}
+        </div>
+        <section class="help-section help-wide">
+          <h4>Mouse</h4>
+          <p class="help-list">
+            {MOUSE.map(([what, does], i) => (
+              <Fragment key={what}>
+                {i > 0 && <span class="help-dot"> · </span>}
+                <b>{what}</b> {does}
+              </Fragment>
+            ))}
+          </p>
+        </section>
+        <section class="help-section help-wide">
+          <h4>Reading the map</h4>
+          <p class="help-list">
+            Star size: how connected a note is · brightness: how recently it changed · a ring: it has
+            issues · pulses flow prerequisite → dependent (blue) and old → new (amber)
+          </p>
+        </section>
       </div>
     </div>
   );
@@ -478,36 +551,11 @@ export function App({ c }: { c: Controller }) {
     const onKey = (e: KeyboardEvent) => {
       const t = e.target as HTMLElement;
       const typing = t.tagName === "INPUT" || t.tagName === "SELECT" || t.tagName === "TEXTAREA";
-      if ((e.key === "k" && (e.metaKey || e.ctrlKey)) || (e.key === "/" && !typing)) {
-        e.preventDefault();
-        c.store.set({ paletteOpen: true });
-        return;
-      }
-      if (e.key === "Escape") {
-        if (typing) (t as HTMLInputElement).blur();
-        c.up();
-        return;
-      }
-      if (!typing && e.altKey && !e.metaKey && !e.ctrlKey && (e.key === "ArrowUp" || e.key === "ArrowDown")) {
-        e.preventDefault();
-        void (e.key === "ArrowUp" ? c.levelUp() : c.levelDown());
-        return;
-      }
-      if (typing || e.metaKey || e.ctrlKey || e.altKey) return;
-      if (e.key === "h" || e.key === "H") c.setHealth(!c.store.state.health);
-      else if ((e.key === "p" || e.key === "P") && c.store.state.focus.note) c.store.set({ previewOpen: !c.store.state.previewOpen });
-      else if (e.key === "l" || e.key === "L") c.setLabels(!c.store.state.labels);
-      else if (e.key === "r" || e.key === "R") c.focus({});
-      else if (e.key === "?") c.store.set({ helpOpen: true });
-      else if (e.key === "[" || e.key === "]") {
-        const f = c.store.state.focus;
-        const con = c.world.constellations.find((k) => k.id === f.constellation) ?? c.world.constellations[0];
-        if (!con) return;
-        const list = con.topics;
-        const i = f.topic ? list.indexOf(f.topic) : -1;
-        const next = list[(i + (e.key === "]" ? 1 : -1) + list.length) % list.length];
-        if (next) c.focus({ topic: next });
-      }
+      const binding = bindingFor(KEYMAP, e, typing);
+      if (!binding?.run) return;
+      e.preventDefault();
+      if (typing && e.key === "Escape") t.blur();
+      binding.run(c, e);
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
@@ -550,7 +598,7 @@ export function App({ c }: { c: Controller }) {
           <span class="dock-sep" />
           <span class="ring" /> <span>note with issues</span>
           <span class="dock-sep" />
-          <Kbd>H</Kbd> <span>exit</span>
+          <Kbd>I</Kbd> <span>exit</span>
         </div>
       )}
       {palette && <Palette c={c} />}

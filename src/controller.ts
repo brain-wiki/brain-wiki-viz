@@ -1,6 +1,6 @@
 import type { Source } from "./api";
 import { Trail, type TrailState } from "./history";
-import { focusToHash, hashToFocus, levelOf, parentFocus, viewFocus, type Focus, type ViewSample } from "./lod";
+import { focusToHash, hashToFocus, levelOf, viewFocus, type Focus, type ViewSample } from "./lod";
 import { nestChildren, nestUp } from "./nesting";
 import { FAMILIES, Galaxy, type Layers, type Quality, type QualityMode, type Target } from "./scene/Galaxy";
 import { Store } from "./store";
@@ -212,7 +212,7 @@ export class Controller {
     if (s.previewOpen) return this.store.set({ previewOpen: false });
     if (s.run) return this.setRun(null);
     if (levelOf(s.focus) === "galaxy") return this.galaxy?.resetView();
-    this.focus(parentFocus(s.focus));
+    void this.levelUp();
   }
 
   /** Where Alt+↑ came from, so Alt+↓ can go back down the same way. */
@@ -226,6 +226,18 @@ export class Controller {
     if (!up) return;
     this.climbed.push(f);
     this.focus(up);
+  }
+
+  /** `[` and `]`: the previous or next place under the same parent, in Alt+↓'s order. */
+  async sibling(step: 1 | -1): Promise<void> {
+    const f = this.store.state.focus;
+    const parent = nestUp(f, this.world, f.topic ? await this.source.topic(f.topic) : null);
+    if (!parent) return;
+    const list = nestChildren(parent, this.world, parent.topic ? await this.source.topic(parent.topic) : null);
+    const key = (x: Focus) => x.note ?? x.topic ?? x.constellation ?? "";
+    const i = list.findIndex((x) => key(x) === key(f));
+    const next = list[(i + step + list.length) % list.length];
+    if (next && key(next) !== key(f)) this.focus(next);
   }
 
   /** Alt+↓: one level down, back the way Alt+↑ came, else into the biggest place inside. */
