@@ -1196,7 +1196,7 @@ export class Galaxy {
           key: `n:${nd.id}`,
           kind: hub ? "hub" : "note",
           text: nd.title,
-          sub: hub ? "hub" : undefined,
+          sub: hub ? "index" : undefined,
           color: flagged ? "#ff6b7a" : undefined,
           pos: v.clone(),
           priority,

@@ -1,18 +1,19 @@
 import { useMemo, useState } from "preact/hooks";
 import type { Controller } from "../controller";
 import { FAMILY_COLORS, type Family } from "../scene/Galaxy";
+import { type Branch, folderTree } from "../layout";
 import { useStore } from "../store";
 import { FLAGS, type NodeData, type Rel, type TopicData } from "../types";
 import { Chip, Dot, FLAG_COLOR, FLAG_LABEL, fmt, Icon } from "./ui";
 
 const REL_LABEL: Record<Rel, string> = {
   part_of: "Part of",
-  has_part: "Has part",
+  has_part: "Contains",
   depends_on: "Depends on",
   enables: "Enables",
   conflicts_with: "Conflicts with",
-  supersedes: "Supersedes",
-  superseded_by: "Superseded by",
+  supersedes: "Replaces",
+  superseded_by: "Replaced by",
   related_to: "Related to",
   links_to: "Links to",
 };
@@ -93,27 +94,31 @@ function NoteRow({ n, c, topic }: { n: NodeData; c: Controller; topic: string })
     <button class="row" onClick={() => c.openNote(n.id, topic)}>
       <span class="row-title">{n.title}</span>
       {n.flags.length > 0 && <Dot color={FLAG_COLOR[n.flags[0]]} size={6} />}
-      <span class="row-meta">{n.degree}</span>
+      <span class="row-meta">{n.degree === 1 ? "1 link" : `${fmt(n.degree)} links`}</span>
     </button>
   );
+}
+
+function notes(n: number): string {
+  return n === 1 ? "1 note" : `${fmt(n)} notes`;
 }
 
 function ConstellationCard({ c, id }: { c: Controller; id: string }) {
   const con = c.world.constellations.find((x) => x.id === id);
   if (!con) return null;
   const topics = c.world.topics.filter((t) => t.constellation === id).sort((a, b) => b.notes - a.notes);
-  const notes = topics.reduce((s, t) => s + t.notes, 0);
+  const count = topics.reduce((s, t) => s + t.notes, 0);
   const flagged = topics.reduce((s, t) => s + t.flagged, 0);
   const recent = topics.reduce((s, t) => s + t.recent, 0);
   return (
     <>
-      <div class="insp-kicker"><Dot color={con.color} /> Constellation</div>
+      <div class="insp-kicker"><Dot color={con.color} /> Group of topics</div>
       <h2 class="insp-title">{con.title}</h2>
       <div class="stats">
         <Stat label="topics" value={topics.length} />
-        <Stat label="notes" value={notes} />
-        <Stat label="recent" value={recent} />
-        <Stat label="flagged" value={flagged} tone={flagged ? "warn" : undefined} />
+        <Stat label="notes" value={count} />
+        <Stat label="changed 7d" value={recent} />
+        <Stat label="with issues" value={flagged} tone={flagged ? "warn" : undefined} />
       </div>
       <div class="section-title">Topics</div>
       <div class="rows">
@@ -122,10 +127,10 @@ function ConstellationCard({ c, id }: { c: Controller; id: string }) {
             <Dot color={t.color} size={7} />
             <span class="row-title">{t.title}</span>
             {t.flagged > 0 && <span class="badge">{t.flagged}</span>}
-            <span class="row-meta">{fmt(t.notes)}</span>
+            <span class="row-meta">{notes(t.notes)}</span>
           </button>
         ))}
-        {topics.length > 14 && <div class="more">and {topics.length - 14} more in the Atlas</div>}
+        {topics.length > 14 && <div class="more">and {topics.length - 14} more in the Topics tab</div>}
       </div>
     </>
   );
@@ -140,8 +145,13 @@ function TopicCard({ c, slug }: { c: Controller; slug: string }) {
   );
   if (!t) return null;
   const titles = new Map(c.world.topics.map((x) => [x.slug, x]));
-  const busiest = data?.slug === slug ? [...data.nodes].filter((n) => n.id !== data.hub).sort((a, b) => b.degree - a.degree).slice(0, 8) : [];
-  const hub = data?.slug === slug ? data.nodes.find((n) => n.id === data.hub) : undefined;
+  const ready = data?.slug === slug ? data : null;
+  const busiest = ready ? [...ready.nodes].filter((n) => n.id !== ready.hub).sort((a, b) => b.degree - a.degree).slice(0, 8) : [];
+  const hub = ready?.nodes.find((n) => n.id === ready.hub);
+  const subTopics = c.world.topics.filter((x) => x.parent === slug).sort((a, b) => b.notes - a.notes);
+  const folders = ready
+    ? [...folderTree(ready).branches.values()].filter((b) => b.depth === 1).sort((a, b) => b.count - a.count || a.title.localeCompare(b.title))
+    : [];
   return (
     <>
       <div class="insp-kicker"><Dot color={t.color} /> Topic</div>
@@ -149,9 +159,9 @@ function TopicCard({ c, slug }: { c: Controller; slug: string }) {
       {t.description && <p class="insp-desc">{t.description}</p>}
       <div class="stats">
         <Stat label="notes" value={t.notes} />
-        <Stat label="this week" value={t.recent} />
-        <Stat label="flagged" value={t.flagged} tone={t.flagged ? "warn" : undefined} />
-        <Stat label="updated" value={t.updated ? t.updated.slice(5) : "—"} />
+        <Stat label="changed 7d" value={t.recent} />
+        <Stat label="with issues" value={t.flagged} tone={t.flagged ? "warn" : undefined} />
+        <Stat label="last change" value={t.updated ? t.updated.slice(5) : "—"} />
       </div>
       {t.flagged > 0 && (
         <div class="flag-chips">
@@ -164,17 +174,49 @@ function TopicCard({ c, slug }: { c: Controller; slug: string }) {
       )}
       {hub && (
         <button class="hub-link" onClick={() => c.openNote(hub.id, slug)}>
-          <Icon name="spark" /> Open the hub <span class="row-meta">{hub.title}</span>
+          <Icon name="spark" /> Open the topic index <span class="row-meta">{hub.title}</span>
         </button>
       )}
-      <div class="section-title">Busiest notes</div>
-      <div class="rows">
-        {data?.slug !== slug && <div class="empty small">Loading…</div>}
-        {busiest.map((n) => <NoteRow key={n.id} n={n} c={c} topic={slug} />)}
-      </div>
+      {subTopics.length > 0 && (
+        <>
+          <div class="section-title">Sub-topics <span class="section-count">{subTopics.length}</span></div>
+          <div class="rows">
+            {subTopics.slice(0, 14).map((x) => (
+              <button class="row" key={x.slug} onClick={() => c.focus({ topic: x.slug })}>
+                <Dot color={x.color} size={7} />
+                <span class="row-title">{x.title}</span>
+                <span class="row-meta">{notes(x.notes)}</span>
+              </button>
+            ))}
+            {subTopics.length > 14 && <div class="more">and {subTopics.length - 14} more in the Topics tab</div>}
+          </div>
+        </>
+      )}
+      {folders.length > 0 && (
+        <>
+          <div class="section-title">Folders <span class="section-count">{folders.length}</span></div>
+          <div class="rows">
+            {folders.slice(0, 12).map((b: Branch) => (
+              <button class="row" key={b.key} disabled={!b.note} title={b.note ? undefined : "This folder has no folder note"} onClick={() => b.note && c.openNote(b.note, slug)}>
+                <Icon name="folder" />
+                <span class="row-title">{b.title}</span>
+                <span class="row-meta">{notes(b.count)}</span>
+              </button>
+            ))}
+            {folders.length > 12 && <div class="more">and {folders.length - 12} more</div>}
+          </div>
+        </>
+      )}
+      {!ready && <div class="empty small">Loading…</div>}
+      {ready && ready.nodes.length > 5 && (
+        <>
+          <div class="section-title">Most connected</div>
+          <div class="rows">{busiest.map((n) => <NoteRow key={n.id} n={n} c={c} topic={slug} />)}</div>
+        </>
+      )}
       {flows.length > 0 && (
         <>
-          <div class="section-title">Strongest links to other topics</div>
+          <div class="section-title">Linked topics</div>
           <div class="rows">
             {flows.map((f) => {
               const other = titles.get(f.a === slug ? f.b : f.a);
@@ -183,7 +225,7 @@ function TopicCard({ c, slug }: { c: Controller; slug: string }) {
                 <button class="row" key={other.slug} onClick={() => c.focus({ topic: other.slug })}>
                   <Dot color={other.color} size={7} />
                   <span class="row-title">{other.title}</span>
-                  <span class="row-meta">{f.total}</span>
+                  <span class="row-meta">{f.total === 1 ? "1 link" : `${fmt(f.total)} links`}</span>
                 </button>
               );
             })}
@@ -207,12 +249,26 @@ function NoteCard({ c, id, slug }: { c: Controller; id: string; slug: string }) 
   const grouped = new Map<Rel, RelRow[]>();
   for (const r of rels) grouped.set(r.rel, [...(grouped.get(r.rel) ?? []), r]);
   const path = note?.path ?? node?.path;
+  const place = useMemo(() => {
+    if (data?.slug !== slug) return [] as Branch[];
+    const { branches, folderOf } = folderTree(data);
+    const out: Branch[] = [];
+    for (let b = branches.get(folderOf.get(id) ?? ""); b && b.key !== ""; b = b.parent === null ? undefined : branches.get(b.parent)) {
+      if (b.note !== id) out.unshift(b);
+    }
+    return out;
+  }, [data, slug, id]);
   return (
     <>
       <div class="insp-kicker">
         <Dot color={t?.color ?? "#888"} /> <button class="link" onClick={() => c.focus({ topic: slug })}>{t?.title ?? slug}</button>
       </div>
       <h2 class="insp-title">{title}</h2>
+      {place.length > 0 && (
+        <div class="insp-place" title="Where this note lives">
+          In {[t?.title ?? slug, ...place.map((b) => b.title)].join(" › ")}
+        </div>
+      )}
       <div class="chips">
         {(note?.kind ?? node?.kind) && <Chip>{note?.kind ?? node?.kind}</Chip>}
         {(note?.type ?? node?.type) && <Chip>{note?.type ?? node?.type}</Chip>}
@@ -237,7 +293,7 @@ function NoteCard({ c, id, slug }: { c: Controller; id: string; slug: string }) 
       {note?.partial && <div class="hint">This exported file has no claim text.</div>}
       {(note?.claims?.length ?? 0) > 0 && (
         <>
-          <div class="section-title">Claims <span class="section-count">{note!.claims!.length}</span></div>
+          <div class="section-title">Facts <span class="section-count">{note!.claims!.length}</span></div>
           <ul class="claims">
             {note!.claims!.map((cl, i) => (
               <li key={cl.id ?? i} class={`claim claim-${cl.status}${cl.taint === "true" || cl.taint === "unknown" ? " claim-unverified" : ""}`}>
@@ -262,14 +318,14 @@ function NoteCard({ c, id, slug }: { c: Controller; id: string; slug: string }) 
       ))}
       {(note?.backlinks?.length ?? 0) > 0 && (
         <>
-          <div class="section-title">Backlinks <span class="section-count">{note!.backlinks!.length}</span></div>
+          <div class="section-title">Linked from <span class="section-count">{note!.backlinks!.length}</span></div>
           <div class="rows">
             {note!.backlinks!.slice(0, 12).map((b) => {
               const target = byPath.get(b.path);
               return (
                 <button class="row" key={b.path + b.relation} disabled={!target} onClick={() => target && c.openNote(target.id, slug)}>
                   <span class="row-title">{b.title}</span>
-                  <span class="row-meta">{b.relation.replace("_", " ")}</span>
+                  <span class="row-meta">{(REL_LABEL[b.relation as Rel] ?? b.relation.replace("_", " ")).toLowerCase()}</span>
                 </button>
               );
             })}
@@ -307,23 +363,25 @@ function NoteCard({ c, id, slug }: { c: Controller; id: string; slug: string }) 
 
 export function Inspector({ c }: { c: Controller }) {
   const focus = useStore(c.store, (s) => s.focus);
-  const has = focus.note || focus.topic || focus.constellation;
+  const card =
+    focus.note && focus.topic ? (
+      <NoteCard c={c} id={focus.note} slug={focus.topic} />
+    ) : focus.topic ? (
+      <TopicCard c={c} slug={focus.topic} />
+    ) : focus.constellation && c.world.constellations.length > 1 ? (
+      <ConstellationCard c={c} id={focus.constellation} />
+    ) : null;
   return (
-    <aside class={`panel insp${has ? " open" : ""}`} aria-label="Inspector" aria-hidden={!has}>
-      {has && (
-        <button class="icon-btn insp-close" onClick={() => c.up()} aria-label="Up one level">
-          <Icon name="close" />
-        </button>
-      )}
-      <div class="insp-body">
-        {focus.note && focus.topic ? (
-          <NoteCard c={c} id={focus.note} slug={focus.topic} />
-        ) : focus.topic ? (
-          <TopicCard c={c} slug={focus.topic} />
-        ) : focus.constellation && c.world.constellations.length > 1 ? (
-          <ConstellationCard c={c} id={focus.constellation} />
-        ) : null}
+    <aside class={`panel insp open${card ? "" : " idle"}`} aria-label="Details">
+      <div class="insp-head">
+        <span>Details</span>
+        {card && (
+          <button class="icon-btn" onClick={() => c.up()} title="Up one level (Esc)" aria-label="Up one level">
+            <Icon name="close" />
+          </button>
+        )}
       </div>
+      <div class="insp-body">{card ?? <div class="empty small">Click a topic or a star to see its details here.</div>}</div>
     </aside>
   );
 }

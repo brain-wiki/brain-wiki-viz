@@ -16,7 +16,7 @@ const FAMILY_LABEL: Record<Family, string> = {
   part_of: "Folders",
   depends_on: "Depends on",
   conflicts_with: "Conflicts",
-  supersedes: "Supersedes",
+  supersedes: "Replaces",
   related_to: "Related",
   links_to: "Wikilinks",
 };
@@ -25,7 +25,7 @@ const FAMILY_HINT: Record<Family, string> = {
   part_of: "Folders: each note to its folder's note, and each folder to the one above it",
   depends_on: "Depends on: pulses run from the prerequisite to what depends on it",
   conflicts_with: "Conflicts: two notes contradict each other",
-  supersedes: "Supersedes: pulses run from the old note to the one that replaced it",
+  supersedes: "Replaces: pulses run from the old note to the one that replaced it",
   related_to: "Related: a loose association, no direction",
   links_to: "Wikilinks: links written inside note text",
 };
@@ -55,7 +55,7 @@ function Breadcrumb({ c }: { c: Controller }) {
   const noteTitle = note?.title ?? data?.nodes.find((n) => n.id === focus.note)?.title;
   const crumbs: { label: string; color?: string; go: () => void; current: boolean }[] = [];
   const multi = c.world.constellations.length > 1;
-  crumbs.push({ label: multi ? "Galaxy" : c.world.brain, go: () => c.focus({}), current: !focus.constellation && !focus.topic });
+  crumbs.push({ label: multi ? "Overview" : c.world.brain, go: () => c.focus({}), current: !focus.constellation && !focus.topic });
   if (con && multi) crumbs.push({ label: `${shortTitle(con.title)}${con.topics.length > 1 ? ` +${con.topics.length - 1}` : ""}`, color: con.color, go: () => c.focus({ constellation: con.id }), current: !focus.topic });
   if (topic) {
     // Parent topics, then the topic: the path through the topic tree (the cluster names its top).
@@ -106,8 +106,8 @@ function LevelHud({ c }: { c: Controller }) {
   const topic = c.world.topics.find((t) => t.slug === focus.topic);
   const current = focus.note ? 3 : focus.topic ? 2 : focus.constellation && multi ? 1 : multi ? 0 : 1;
   const rungs = [
-    { level: 0, name: "Galaxy", place: multi ? `${c.world.constellations.length} constellations` : "", go: () => c.focus({}) },
-    { level: 1, name: "Constellation", place: con ? shortTitle(con.title) : "", go: () => con && c.focus({ constellation: con.id }) },
+    { level: 0, name: "Overview", place: multi ? `${c.world.constellations.length} groups` : "", go: () => c.focus({}) },
+    { level: 1, name: "Group", place: con ? shortTitle(con.title) : "", go: () => con && c.focus({ constellation: con.id }) },
     { level: 2, name: "Topic", place: topic?.title ?? "", go: () => topic && c.focus({ topic: topic.slug }) },
     { level: 3, name: "Note", place: focus.note ? (note?.title ?? "") : "", go: () => undefined },
   ].filter((r) => multi || r.level > 0);
@@ -116,7 +116,7 @@ function LevelHud({ c }: { c: Controller }) {
   const marker = Math.max(0, Math.min(1, (Math.max(zoom, first) - first) / span));
   return (
     <div class="panel level-hud" aria-label="Map level">
-      <div class="minimap-label">LEVEL</div>
+      <div class="minimap-label">ZOOM</div>
       <div class="level-track">
         <div class="level-rail" />
         <div class="level-marker" style={{ top: `${marker * 100}%` }} />
@@ -131,7 +131,7 @@ function LevelHud({ c }: { c: Controller }) {
           </li>
         ))}
       </ol>
-      <div class="level-hint">{current < 2 ? "Scroll to zoom in" : current === 2 ? "Click a star to open a note" : "Scroll out to leave"}</div>
+      <div class="level-hint">{current < 2 ? "Scroll to zoom in" : current === 2 ? "Click a star to open a note" : "Scroll out or press Esc to go back"}</div>
     </div>
   );
 }
@@ -143,8 +143,8 @@ function visitLabel(c: Controller, v: Visit): { title: string; kind: string; col
   if (f.note) return { title: v.title ?? c.galaxy?.noteTitle(f.note) ?? "Note", kind: "note", color: topic?.color, sub: topic?.title };
   if (topic) return { title: topic.title, kind: "topic", color: topic.color };
   const con = c.world.constellations.find((x) => x.id === f.constellation);
-  if (con) return { title: shortTitle(con.title), kind: "constellation", color: con.color };
-  return { title: c.world.constellations.length > 1 ? "Galaxy" : c.world.brain, kind: "overview" };
+  if (con) return { title: shortTitle(con.title), kind: "group", color: con.color };
+  return { title: c.world.constellations.length > 1 ? "Overview" : c.world.brain, kind: "overview" };
 }
 
 /** Back, forward, and the list of everything opened in this tab, like a browser's history. */
@@ -216,17 +216,17 @@ function TopBar({ c }: { c: Controller }) {
       </div>
       <button class="panel search-btn" onClick={() => c.store.set({ paletteOpen: true })} aria-label="Search">
         <Icon name="search" />
-        <span>Search the brain</span>
+        <span>Search notes and topics</span>
         <Kbd>/</Kbd>
       </button>
       <div class="panel totals" aria-label="Totals">
         <div><b>{fmt(w.totals.topics)}</b><span>topics</span></div>
         <div><b>{fmt(w.totals.notes)}</b><span>notes</span></div>
         <div><b>{fmt(w.totals.links)}</b><span>links</span></div>
-        <button class={`total${w.totals.flagged ? " warn" : ""}`} onClick={() => c.setNav("health")} title="Show flagged notes in the Health tab">
-          <b>{fmt(w.totals.flagged)}</b><span>flagged</span>
+        <button class={`total${w.totals.flagged ? " warn" : ""}`} onClick={() => c.setNav("health")} title="Notes with issues: open the Issues tab">
+          <b>{fmt(w.totals.flagged)}</b><span>with issues</span>
         </button>
-        <button class="total gold" onClick={() => c.select({ kind: "inbox" })} title="What is waiting in the inbox">
+        <button class="total gold" onClick={() => c.select({ kind: "inbox" })} title="Session captures waiting to be merged automatically">
           <b>{fmt(w.episodes.count)}</b><span>inbox</span>
         </button>
       </div>
@@ -250,8 +250,8 @@ function Dock({ c }: { c: Controller }) {
       </div>
       <div class="dock-sep" />
       <div class="dock-group">
-        <button class={`layer${health ? " on health" : ""}`} aria-pressed={health} onClick={() => c.setHealth(!health)} title="Health mode (H)">
-          <Icon name="health" /> <span>Health</span>
+        <button class={`layer${health ? " on health" : ""}`} aria-pressed={health} onClick={() => c.setHealth(!health)} title="Color the map by notes with issues (H)">
+          <Icon name="health" /> <span>Highlight issues</span>
         </button>
         <MoreMenu c={c} />
         <button class="layer" onClick={() => c.store.set({ helpOpen: true })} title="Shortcuts (?)" aria-label="Shortcuts">
@@ -358,7 +358,7 @@ function FlowCard({ c, target, left, top }: { c: Controller; target: Extract<Tar
   const rels = Object.entries(target.rels).sort((x, y) => y[1] - x[1]).map(([rel, n]) => `${n} ${rel.replace(/_/g, " ")}`);
   return (
     <div class="hovercard panel" style={{ left: `${left}px`, top: `${top}px` }}>
-      <div class="insp-kicker">Links between {target.level === "constellation" ? "constellations" : "topics"}</div>
+      <div class="insp-kicker">Links between {target.level === "constellation" ? "groups" : "topics"}</div>
       <div class="hover-title">{name(a)} ↔ {name(b)}</div>
       <div class="hover-line">{target.total} typed links{rels.length ? `: ${rels.join(" · ")}` : ""}</div>
       <div class="hover-line link-hint">Click to fly to {name(b)}</div>
@@ -384,17 +384,17 @@ function HoverCard({ c }: { c: Controller }) {
   if (target.kind === "constellation") {
     const con = c.world.constellations.find((k) => k.id === target.id);
     if (!con) return null;
-    kicker = "Constellation";
+    kicker = "Group of topics";
     title = con.title;
     color = con.color;
-    lines = [`${con.topics.length} topics`, "Click to fly in"];
+    lines = [`${con.topics.length} topics`, "Click to zoom in"];
   } else if (target.kind === "topic") {
     const t = c.world.topics.find((k) => k.slug === target.slug);
     if (!t) return null;
     kicker = "Topic";
     title = t.title;
     color = t.color;
-    lines = [`${t.notes} notes${t.recent ? ` · ${t.recent} this week` : ""}`, t.flagged ? `${t.flagged} flagged` : "No open issues"];
+    lines = [`${t.notes} notes${t.recent ? ` · ${t.recent} changed this week` : ""}`, t.flagged ? `${t.flagged} with issues` : "No issues"];
   } else if (target.kind === "note") {
     const t = c.world.topics.find((k) => k.slug === target.topic);
     const nodes = data?.slug === target.topic ? data.nodes : undefined;
@@ -403,14 +403,14 @@ function HoverCard({ c }: { c: Controller }) {
     color = t?.color ?? color;
     title = n?.title ?? "Note";
     if (n) {
-      lines = [[n.kind === "hub" ? "hub" : n.type, n.status !== "active" ? n.status : null, `${n.degree} links`].filter(Boolean).join(" · ")];
+      lines = [[n.kind === "hub" ? "topic index" : n.type, n.status !== "active" ? n.status : null, `${n.degree} links`].filter(Boolean).join(" · ")];
       flags = n.flags;
     }
   } else {
     kicker = "Inbox";
-    title = `${c.world.episodes.count} pending episodes`;
+    title = `${c.world.episodes.count} session captures`;
     color = "#ffd88a";
-    lines = ["Raw observations waiting for consolidation"];
+    lines = ["Waiting to be merged into your notes automatically"];
   }
   const left = Math.min(window.innerWidth - 300, x + 18);
   const top = Math.min(window.innerHeight - 140, y + 18);
@@ -430,8 +430,8 @@ function HoverCard({ c }: { c: Controller }) {
 
 function Help({ c }: { c: Controller }) {
   const rows: [string, string][] = [
-    ["/  or  Ctrl/⌘ K", "Search notes, topics and constellations"],
-    ["Click", "Fly to a constellation or topic; open a note's preview"],
+    ["/  or  Ctrl/⌘ K", "Search notes and topics"],
+    ["Click", "Zoom to a group or topic; open a note"],
     ["P", "Show or hide the selected note's preview"],
     ["Scroll", "Zoom toward the cursor; detail appears as you get closer"],
     ["Drag", "Pan across the map"],
@@ -439,10 +439,10 @@ function Help({ c }: { c: Controller }) {
     ["Hover a trail", "See the two notes it connects; click to go to the other end"],
     ["Esc", "Up one level, or close"],
     ["Alt ←  ·  Alt →", "Back and forward through what you opened (or the buttons by the breadcrumb)"],
-    ["H", "Health mode"],
+    ["H", "Highlight issues"],
     ["L", "Labels"],
     ["R", "Back to the overview"],
-    ["[  ]", "Previous or next topic in the constellation"],
+    ["[  ]", "Previous or next topic in the group"],
   ];
   return (
     <div class="palette-scrim" onClick={(e) => e.target === e.currentTarget && c.store.set({ helpOpen: false })}>
@@ -454,7 +454,7 @@ function Help({ c }: { c: Controller }) {
             <span>{v}</span>
           </div>
         ))}
-        <p class="hint">Star size shows how connected a note is, brightness how recently it changed. Rings mark health flags.</p>
+        <p class="hint">Star size shows how connected a note is, brightness how recently it changed. Rings mark notes with issues.</p>
       </div>
     </div>
   );
@@ -516,7 +516,7 @@ export function App({ c }: { c: Controller }) {
             check <code>chrome://gpu</code> (or <code>about:support</code> in Firefox) for WebGL2 marked hardware
             accelerated. Remote desktop sessions often have no GPU.
           </p>
-          <p>The navigator, search, and inspector still work.</p>
+          <p>The topic list, search, and details panel still work.</p>
         </div>
       )}
       <TopBar c={c} />
@@ -535,11 +535,11 @@ export function App({ c }: { c: Controller }) {
       )}
       {health && (
         <div class="panel health-legend" role="note" aria-label="Health mode legend">
-          <span>Fewest flags</span>
+          <span>Fewest issues</span>
           <span class="health-ramp" />
-          <span>Most flags</span>
+          <span>Most issues</span>
           <span class="dock-sep" />
-          <span class="ring" /> <span>flagged note</span>
+          <span class="ring" /> <span>note with issues</span>
           <span class="dock-sep" />
           <Kbd>H</Kbd> <span>exit</span>
         </div>

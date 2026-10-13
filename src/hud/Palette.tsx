@@ -72,13 +72,13 @@ export function Palette({ c }: { c: Controller }) {
 
   return (
     <div class="palette-scrim" onClick={(e) => e.target === e.currentTarget && close()}>
-      <div class="palette panel" role="dialog" aria-label="Search the brain">
+      <div class="palette panel" role="dialog" aria-label="Search notes and topics">
         <div class="palette-input">
           <Icon name="search" />
           <input
             ref={input}
             value={q}
-            placeholder="Search notes, topics, constellations…"
+            placeholder="Search notes and topics…"
             aria-label="Search"
             onInput={(e) => {
               setQ((e.target as HTMLInputElement).value);
@@ -108,7 +108,7 @@ export function Palette({ c }: { c: Controller }) {
           {items.map((it, i) => (
             <button key={it.key} role="option" aria-selected={i === sel} class={`palette-item${i === sel ? " sel" : ""}`} onMouseEnter={() => setSel(i)} onClick={() => choose(i)}>
               <Dot color={it.color} size={8} />
-              <span class={`palette-kind kind-${it.kind}`}>{it.kind}</span>
+              <span class={`palette-kind kind-${it.kind}`}>{it.kind === "constellation" ? "group" : it.kind}</span>
               <span class="palette-title">{it.title}</span>
               <span class="palette-sub">{it.sub}</span>
             </button>

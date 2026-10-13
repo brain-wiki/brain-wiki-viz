@@ -31,9 +31,9 @@ function Atlas({ c }: { c: Controller }) {
       <div class="nav-tools">
         <input class="field" placeholder="Filter topics" value={filter} onInput={(e) => setFilter((e.target as HTMLInputElement).value)} aria-label="Filter topics" />
         <select class="field select" value={sort} onChange={(e) => setSort((e.target as HTMLSelectElement).value as Sort)} aria-label="Sort topics">
-          <option value="size">Size</option>
-          <option value="health">Health</option>
-          <option value="recent">Recent</option>
+          <option value="size">Most notes</option>
+          <option value="health">Most issues</option>
+          <option value="recent">Recently changed</option>
           <option value="name">Name</option>
         </select>
       </div>
@@ -64,7 +64,7 @@ function Atlas({ c }: { c: Controller }) {
                   <span class={`chev${expanded ? " open" : ""}`}><Icon name="chevron" /></span>
                   <Dot color={con.color} size={9} />
                   <span class="tree-title" title={con.title}>{shortTitle(con.title)}{con.topics.length > 1 ? <span class="tree-more"> +{con.topics.length - 1}</span> : null}</span>
-                  <span class="tree-meta">{con.topics.length} · {fmt(notes)}{flagged ? <span class="warn"> · {flagged}⚑</span> : null}</span>
+                  <span class="tree-meta">{con.topics.length} topics · {fmt(notes)} notes{flagged ? <span class="warn"> · {flagged}⚑</span> : null}</span>
                 </button>
               )}
               {expanded && (
@@ -81,7 +81,7 @@ function Atlas({ c }: { c: Controller }) {
                       <Dot color={t.color} size={7} />
                       <span class="tree-title">{t.title}</span>
                       {t.flagged > 0 && <span class="badge" title={`${t.flagged} flagged notes`}>{t.flagged}</span>}
-                      <span class="tree-count">{fmt(t.notes)}</span>
+                      <span class="tree-count" title={`${fmt(t.notes)} notes`}>{fmt(t.notes)} notes</span>
                       <span class="bar" aria-hidden="true">
                         <span style={{ width: `${Math.max(4, (t.notes / maxNotes) * 100)}%`, background: t.color }} />
                       </span>
@@ -125,10 +125,10 @@ function HealthTab({ c }: { c: Controller }) {
   return (
     <div class="health">
       <label class="switch-row">
-        <span>Health mode colors topics by their share of flagged notes and rings each flagged note</span>
+        <span>Highlight issues on the map: color each topic by its share of notes with issues, and ring each of those notes</span>
         <input type="checkbox" class="switch" checked={health} onChange={(e) => c.setHealth((e.target as HTMLInputElement).checked)} />
       </label>
-      {flags.length === 0 && <div class="empty">No open issues. The brain is healthy.</div>}
+      {flags.length === 0 && <div class="empty">No issues found.</div>}
       {flags.map((f) => (
         <div class="flag-group" key={f}>
           <button class="flag-head" onClick={() => setOpen(open === f ? null : f)} aria-expanded={open === f}>
@@ -154,26 +154,38 @@ function HealthTab({ c }: { c: Controller }) {
   );
 }
 
+/** What each kind of recorded change is called in the Activity tab. */
+const RUN_KIND: Record<string, string> = {
+  consolidate: "Merged captures",
+  edit: "Agent edit",
+  "lint-fix": "Auto-fix",
+  mv: "Moved",
+  undo: "Undo",
+  import: "Import",
+  review: "Review",
+  rule: "Rule",
+};
+
 function Changes({ c }: { c: Controller }) {
   const run = useStore(c.store, (s) => s.run);
   const runs = c.world.runs;
   const titles = useMemo(() => new Map(c.world.topics.map((t) => [t.slug, t])), [c]);
-  if (runs.length === 0) return <div class="empty">No runs recorded on this device yet.</div>;
+  if (runs.length === 0) return <div class="empty">No activity recorded on this device yet.</div>;
   return (
     <div class="changes">
-      <div class="hint">Select a run to light up what it changed.</div>
+      <div class="hint">Select an entry to highlight the notes it changed.</div>
       {runs.map((r) => {
         const topics = Object.entries(r.topics).sort((a, b) => b[1] - a[1]);
         const when = r.at ? new Date(r.at) : null;
         return (
           <button key={r.id} class={`run${run?.id === r.id ? " active" : ""}`} onClick={() => c.setRun(run?.id === r.id ? null : r)}>
             <div class="run-top">
-              <span class={`run-kind kind-${r.kind}`}>{r.kind}</span>
+              <span class={`run-kind kind-${r.kind}`}>{RUN_KIND[r.kind] ?? r.kind}</span>
               <span class="run-when">{when ? when.toLocaleString(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" }) : ""}</span>
             </div>
             <div class="run-body">
-              {r.episodes > 0 && <span>{r.episodes} episodes · </span>}
-              <span>{r.touched.length} notes</span>
+              {r.episodes > 0 && <span>{r.episodes} session captures · </span>}
+              <span>{r.touched.length} notes changed</span>
             </div>
             {topics.length > 0 && (
               <div class="run-topics">
@@ -199,16 +211,16 @@ export function Navigator({ c }: { c: Controller }) {
   const open = useStore(c.store, (s) => s.navOpen);
   const flagged = c.world.totals.flagged;
   return (
-    <aside class={`panel nav${open ? "" : " collapsed"}`} aria-label="Navigator">
+    <aside class={`panel nav${open ? "" : " collapsed"}`} aria-label="Topics, issues, and activity">
       <div class="tabs" role="tablist">
         {(["atlas", "health", "changes"] as const).map((t) => (
           <button key={t} role="tab" aria-selected={tab === t} class={`tab${tab === t ? " active" : ""}`} onClick={() => c.setNav(t)}>
-            {t === "atlas" ? "Atlas" : t === "health" ? "Health" : "Changes"}
+            {t === "atlas" ? "Topics" : t === "health" ? "Issues" : "Activity"}
             {t === "health" && flagged > 0 && <span class="tab-badge">{fmt(flagged)}</span>}
             {t === "changes" && c.world.runs.length > 0 && <span class="tab-badge dim">{c.world.runs.length}</span>}
           </button>
         ))}
-        <button class="icon-btn" onClick={() => c.store.set({ navOpen: !open })} aria-label={open ? "Collapse navigator" : "Expand navigator"}>
+        <button class="icon-btn" onClick={() => c.store.set({ navOpen: !open })} aria-label={open ? "Collapse the panel" : "Expand the panel"} title={open ? "Collapse" : "Expand"}>
           <Icon name={open ? "back" : "chevron"} />
         </button>
       </div>
