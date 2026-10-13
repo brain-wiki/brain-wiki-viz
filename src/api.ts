@@ -87,7 +87,6 @@ class EmbeddedSource implements Source {
           status: n.status,
           topic: n.topic,
           updated: n.updated,
-          privacy: n.privacy,
           partial: true,
         };
       }

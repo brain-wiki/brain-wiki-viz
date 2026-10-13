@@ -64,7 +64,7 @@ describe("topic layout", () => {
     hub: "h",
     nodes: ["h", "a", "b", "c", "d"].map((id) => ({
       id, title: id, path: `${id}.md`, kind: id === "h" ? "hub" : "note", topic: "t0", type: null,
-      status: "active", privacy: "default", updated: null, aliases: [], degree: 1, claims: 0,
+      status: "active", updated: null, aliases: [], degree: 1, claims: 0,
       superseded_claims: 0, unverified_claims: 0, flags: [],
     })),
     links: [{ source: "a", target: "b", rel: "depends_on" }],
@@ -94,7 +94,7 @@ describe("folder tree", () => {
     path: "topics/x",
     nodes: paths.map((rel) => ({
       id: rel.split("/").pop()!, title: `T ${rel}`, path: `topics/x/${rel}.md`, kind: rel === "index" ? "hub" : "note",
-      topic: "x", type: null, status: "active", privacy: "default", updated: null, aliases: [], degree: 1,
+      topic: "x", type: null, status: "active", updated: null, aliases: [], degree: 1,
       claims: 0, superseded_claims: 0, unverified_claims: 0, flags: [],
     })),
     links: [],

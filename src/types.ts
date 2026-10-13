@@ -57,7 +57,6 @@ export interface World {
   brain: string;
   generated: string;
   profile: string;
-  privacy: string[];
   totals: { topics: number; notes: number; hubs: number; episodes: number; links: number; flagged: number };
   constellations: Constellation[];
   topics: TopicSummary[];
@@ -74,7 +73,6 @@ export interface NodeData {
   topic: string | null;
   type: string | null;
   status: string;
-  privacy: string;
   updated: string | null;
   aliases: string[];
   degree: number;
@@ -132,7 +130,6 @@ export interface NoteDetail {
   status: string;
   topic: string | null;
   updated: string | null;
-  privacy: string;
   banners?: string[];
   summary?: string | null;
   claims?: Claim[];

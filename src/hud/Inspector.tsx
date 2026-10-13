@@ -273,7 +273,6 @@ function NoteCard({ c, id, slug }: { c: Controller; id: string; slug: string }) 
         {(note?.kind ?? node?.kind) && <Chip>{note?.kind ?? node?.kind}</Chip>}
         {(note?.type ?? node?.type) && <Chip>{note?.type ?? node?.type}</Chip>}
         {status && <Chip tone={status === "active" ? "ok" : "warn"}>{status}</Chip>}
-        {(note?.privacy ?? node?.privacy) && (note?.privacy ?? node?.privacy) !== "default" && <Chip tone="private">{note?.privacy ?? node?.privacy}</Chip>}
         {(note?.updated ?? node?.updated) && <Chip tone="dim">updated {(note?.updated ?? node?.updated ?? "").slice(0, 10)}</Chip>}
       </div>
       {node && node.flags.length > 0 && (
