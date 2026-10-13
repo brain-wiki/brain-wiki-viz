@@ -1,4 +1,4 @@
-import { useMemo, useState } from "preact/hooks";
+import { useEffect, useMemo, useState } from "preact/hooks";
 import type { Controller } from "../controller";
 import { shortTitle } from "../scene/Galaxy";
 import { useStore } from "../store";
@@ -34,6 +34,11 @@ function Atlas({ c }: { c: Controller }) {
   const [filter, setFilter] = useState("");
   const [sort, setSort] = useState<Sort>("name");
   const [open, setOpen] = useState<Record<string, boolean>>({});
+  // Arriving in a group (from the map, search, or keys) opens it again, so where you are shows.
+  useEffect(() => {
+    const id = focus.constellation;
+    if (id) setOpen((o) => (id in o ? Object.fromEntries(Object.entries(o).filter(([k]) => k !== id)) : o));
+  }, [focus.constellation]);
   const bySlug = useMemo(() => new Map(world.topics.map((t) => [t.slug, t])), [world]);
   const maxNotes = Math.max(1, ...world.topics.map((t) => t.notes));
   const needle = filter.trim().toLowerCase();
@@ -66,24 +71,31 @@ function Atlas({ c }: { c: Controller }) {
           .sort((a, b) => sorter(sort)(a.group, b.group))
           .map(({ con, topics, group: { notes, flagged } }) => {
           if (needle && topics.length === 0) return null;
-          const expanded = single || !!needle || open[con.id] || focus.constellation === con.id;
+          // A group opens when focused unless it was closed by hand; a filter shows every match.
+          const focused = focus.constellation === con.id;
+          const expanded = single || !!needle || (open[con.id] ?? focused);
+          const toggle = () => setOpen({ ...open, [con.id]: !expanded });
           return (
             <div class="tree-group" key={con.id}>
               {!single && (
-                <button
-                  class={`tree-con${focus.constellation === con.id ? " active" : ""}`}
-                  onClick={() => {
-                    setOpen({ ...open, [con.id]: !expanded || focus.constellation !== con.id });
-                    c.focus({ constellation: con.id });
-                  }}
-                  role="treeitem"
-                  aria-expanded={expanded}
-                >
-                  <span class={`chev${expanded ? " open" : ""}`}><Icon name="chevron" /></span>
-                  <Dot color={con.color} size={9} />
-                  <span class="tree-title" title={con.title}>{shortTitle(con.title)}{con.topics.length > 1 ? <span class="tree-more"> +{con.topics.length - 1}</span> : null}</span>
-                  <span class="tree-meta">{con.topics.length} topics · {fmt(notes)} notes{flagged ? <span class="warn"> · {flagged}⚑</span> : null}</span>
-                </button>
+                <div class={`tree-con${focused ? " active" : ""}`} role="treeitem" aria-expanded={expanded}>
+                  <button class={`chev${expanded ? " open" : ""}`} onClick={toggle} aria-label={expanded ? "Collapse" : "Expand"} title={expanded ? "Collapse" : "Expand"}>
+                    <Icon name="chevron" />
+                  </button>
+                  <button
+                    class="tree-con-main"
+                    onClick={() => {
+                      // The open group you are in closes on a second click; any other opens and is focused.
+                      if (focused && expanded) return toggle();
+                      setOpen({ ...open, [con.id]: true });
+                      c.focus({ constellation: con.id });
+                    }}
+                  >
+                    <Dot color={con.color} size={9} />
+                    <span class="tree-title" title={con.title}>{shortTitle(con.title)}{con.topics.length > 1 ? <span class="tree-more"> +{con.topics.length - 1}</span> : null}</span>
+                    <span class="tree-meta">{con.topics.length} topics · {fmt(notes)} notes{flagged ? <span class="warn"> · {flagged}⚑</span> : null}</span>
+                  </button>
+                </div>
               )}
               {expanded && (
                 <div class="tree-topics">

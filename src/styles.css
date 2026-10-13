@@ -116,7 +116,10 @@ button:disabled { cursor: default; opacity: 0.55; }
 .select { flex: none; width: 132px; padding: 0 6px; }
 .tree-group { margin-bottom: 2px; }
 .tree-con, .tree-topic, .flag-head, .flag-item, .row { width: 100%; display: flex; align-items: center; gap: 8px; text-align: left; border-radius: 9px; transition: background 0.15s; }
-.tree-con { padding: 8px 8px; font-weight: 600; }
+.tree-con { padding: 0 4px 0 0; font-weight: 600; gap: 0; }
+.tree-con .chev { align-self: stretch; padding: 0 6px 0 8px; border-radius: 9px 0 0 9px; }
+.tree-con .chev:hover { color: var(--text); }
+.tree-con-main { flex: 1; min-width: 0; display: flex; align-items: center; gap: 8px; padding: 8px 4px 8px 2px; text-align: left; }
 .tree-con:hover, .tree-topic:hover, .flag-head:hover, .flag-item:hover, .row:hover:not(:disabled) { background: rgba(138, 180, 255, 0.09); }
 .tree-con.active, .tree-topic.active { background: linear-gradient(90deg, rgba(138, 180, 255, 0.2), rgba(138, 180, 255, 0.04)); box-shadow: inset 2px 0 0 var(--accent); }
 .chev { display: grid; place-items: center; color: var(--dim); transition: transform 0.2s; }
