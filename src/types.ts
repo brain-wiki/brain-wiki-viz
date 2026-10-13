@@ -28,6 +28,7 @@ export interface TopicSummary {
   description?: string | null;
   color: string;
   constellation: string;
+  parent?: string | null; // the enclosing topic, when this is a sub-topic
   notes: number;
   hub: string | null;
   updated: string | null;
@@ -102,6 +103,7 @@ export interface TopicData {
   title: string;
   color: string;
   hub: string | null;
+  path?: string; // the topic's folder in the brain
   nodes: NodeData[];
   links: Link[];
   external: ExternalLink[];

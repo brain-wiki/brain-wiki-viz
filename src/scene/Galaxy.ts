@@ -9,7 +9,7 @@ import { RenderPass } from "three/addons/postprocessing/RenderPass.js";
 import { ShaderPass } from "three/addons/postprocessing/ShaderPass.js";
 import { UnrealBloomPass } from "three/addons/postprocessing/UnrealBloomPass.js";
 import type { Source } from "../api";
-import { galaxyLayout, topicLayout, type GalaxyLayout, type Placed } from "../layout";
+import { galaxyLayout, topicLayout, type BranchPlacement, type GalaxyLayout, type Placed } from "../layout";
 import { chooseRevealed, healthSeverity, levelOf, projectedRadius, type Focus, type ViewSample } from "../lod";
 import { FLAGS, type NodeData, type Rel, type RunSummary, type TopicData, type TopicSummary, type World } from "../types";
 import { gaussian, rng } from "../util/rand";
@@ -115,6 +115,8 @@ interface TopicLayer {
   nodes: NodeData[];
   world: Float32Array;
   lines: Map<Family, LineSegments2[]>;
+  branches: BranchPlacement[]; // the topic's folder tree
+  branchNotes: Set<string>; // folder notes: labeled as their branch
   fade: number;
   target: number;
 }
@@ -229,7 +231,7 @@ export class Galaxy {
   private focus: Focus = {};
   private neighborhood = new Map<string, number>();
   private run: RunSummary | null = null;
-  private layers: Layers = { part_of: false, depends_on: true, conflicts_with: true, supersedes: true, related_to: true, links_to: false };
+  private layers: Layers = { part_of: true, depends_on: true, conflicts_with: true, supersedes: true, related_to: true, links_to: false };
   private health = false;
   private severity: Float32Array;
   private dustSeverity: Float32Array;
@@ -650,6 +652,7 @@ export class Galaxy {
     const states = new Float32Array(count);
     const world = new Float32Array(count * 3);
     const [tr, tg, tb] = rgb(data.color);
+    const branchSize = new Map(placement.branches.filter((b) => b.note).map((b) => [b.note!, b.count]));
     nodes.forEach((nd, i) => {
       const hub = nd.id === data.hub;
       const ghost = nd.status === "superseded" || nd.status === "archived";
@@ -657,6 +660,8 @@ export class Galaxy {
       colors.set([tr * (1 - mix) + mix, tg * (1 - mix) + mix, tb * (1 - mix) + mix], i * 3);
       if (ghost) colors.set([0.55, 0.58, 0.66], i * 3);
       sizes[i] = hub ? 8 : Math.min(6.5, 1.8 + 1.1 * Math.sqrt(nd.degree));
+      const members = branchSize.get(nd.id);
+      if (members) sizes[i] = Math.max(sizes[i], Math.min(7, 3 + 0.5 * Math.sqrt(members))); // a branch's star
       alphas[i] = (ghost ? 0.32 : 1) * recency(nd.updated, this.now);
       const first = FLAGS.findIndex((f) => nd.flags.includes(f));
       flags[i] = first < 0 ? 0 : first + 1;
@@ -688,13 +693,14 @@ export class Galaxy {
       const fam = familyOf(l.rel, l.source, l.target);
       if (!fam) continue;
       const [family, from, to] = fam;
+      if (family === "part_of") continue; // the folder tree below draws containment
       const a = local(from);
       const b = local(to);
       if (!a || !b || from === to) continue;
       let bucket = perFamily.get(family);
       if (!bucket) perFamily.set(family, (bucket = { pos: [], colors: [] }));
       bucket.pos.push(...a, ...b);
-      const c = family === "part_of" ? [tr * 0.6, tg * 0.6, tb * 0.6] : rgb(FAMILY_COLORS[family]);
+      const c = rgb(FAMILY_COLORS[family]);
       bucket.colors.push(c[0] * 0.55, c[1] * 0.55, c[2] * 0.55, c[0], c[1], c[2]);
     }
     const lines = new Map<Family, LineSegments2[]>();
@@ -707,8 +713,21 @@ export class Galaxy {
       }
       lines.set(family, trail);
     }
+    // The folder tree (design doc 12 §3): each branch to its parent, each note to its branch.
+    if (placement.skeleton.length) {
+      const tree: number[] = [];
+      for (let k = 0; k < placement.skeleton.length / 6; k++) tree.push(tr * 0.5, tg * 0.5, tb * 0.5, tr * 0.8, tg * 0.8, tb * 0.8);
+      const st = FAMILY_STYLE.part_of;
+      const trail = this.trail([...placement.skeleton], tree, "fam:part_of", st.width, st.opacity, false);
+      for (const line of trail) {
+        line.visible = false;
+        group.add(line);
+      }
+      lines.set("part_of", trail);
+    }
     this.scene.add(group);
-    return { slug: data.slug, data, center, radius: p.r, group, stars, material, state, sizes, ids: placement.ids, index, nodes, world, lines, fade: 0, target: 1 };
+    const branchNotes = new Set(placement.branches.flatMap((b) => (b.note ? [b.note] : [])));
+    return { slug: data.slug, data, center, radius: p.r, group, stars, material, state, sizes, ids: placement.ids, index, nodes, world, lines, branches: placement.branches, branchNotes, fade: 0, target: 1 };
   }
 
   private disposeLayer(layer: TopicLayer): void {
@@ -1148,7 +1167,22 @@ export class Galaxy {
         .map((nd, i) => ({ nd, i }))
         .sort((a, b) => b.nd.degree - a.nd.degree)
         .slice(0, 140);
+      for (const b of layer.branches) {
+        const state = b.note ? Math.max(this.neighborhood.get(b.note) ?? 0, this.hoverEnds.has(b.note) ? 2 : 0) : 0;
+        const hovered = !!b.note && this.hovered === `n:${b.note}`;
+        cands.push({
+          key: `b:${layer.slug}:${b.key}`,
+          kind: "branch",
+          text: b.title,
+          sub: `${b.count}`,
+          pos: new THREE.Vector3(b.position[0] + layer.center.x, b.position[1] + layer.center.y, b.position[2] + layer.center.z),
+          priority: state >= 2 || hovered ? 12000 : 5200 + b.count * 8 - b.depth * 300,
+          lift: 10,
+          emphasis: state >= 2 || hovered,
+        });
+      }
       for (const { nd, i } of order) {
+        if (layer.branchNotes.has(nd.id)) continue; // labeled as its branch above
         v.set(layer.world[i * 3], layer.world[i * 3 + 1], layer.world[i * 3 + 2]);
         const d = cam.distanceTo(v);
         const starPx = (layer.sizes[i] * scale) / Math.max(d, 1);

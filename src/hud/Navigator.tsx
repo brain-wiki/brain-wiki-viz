@@ -39,14 +39,16 @@ function Atlas({ c }: { c: Controller }) {
       </div>
       <div class="tree" role="tree">
         {world.constellations.map((con) => {
-          const topics = con.topics
-            .map((s) => bySlug.get(s))
-            .filter((t): t is TopicSummary => !!t && (!needle || t.title.toLowerCase().includes(needle) || t.slug.includes(needle)))
-            .sort(sorter(sort));
+          const topics = nested(
+            con.topics
+              .map((s) => bySlug.get(s))
+              .filter((t): t is TopicSummary => !!t && (!needle || t.title.toLowerCase().includes(needle) || t.slug.includes(needle))),
+            sorter(sort),
+          );
           if (needle && topics.length === 0) return null;
           const expanded = single || !!needle || open[con.id] || focus.constellation === con.id;
-          const notes = topics.reduce((s, t) => s + t.notes, 0);
-          const flagged = topics.reduce((s, t) => s + t.flagged, 0);
+          const notes = topics.reduce((s, { topic: t }) => s + t.notes, 0);
+          const flagged = topics.reduce((s, { topic: t }) => s + t.flagged, 0);
           return (
             <div class="tree-group" key={con.id}>
               {!single && (
@@ -67,8 +69,15 @@ function Atlas({ c }: { c: Controller }) {
               )}
               {expanded && (
                 <div class="tree-topics">
-                  {topics.map((t) => (
-                    <button key={t.slug} class={`tree-topic${focus.topic === t.slug ? " active" : ""}`} onClick={() => c.focus({ topic: t.slug })} role="treeitem">
+                  {topics.map(({ topic: t, depth }) => (
+                    <button
+                      key={t.slug}
+                      class={`tree-topic${focus.topic === t.slug ? " active" : ""}`}
+                      style={depth ? { paddingLeft: `${8 + depth * 14}px` } : undefined}
+                      onClick={() => c.focus({ topic: t.slug })}
+                      role="treeitem"
+                      aria-level={depth + 1}
+                    >
                       <Dot color={t.color} size={7} />
                       <span class="tree-title">{t.title}</span>
                       {t.flagged > 0 && <span class="badge" title={`${t.flagged} flagged notes`}>{t.flagged}</span>}
@@ -86,6 +95,24 @@ function Atlas({ c }: { c: Controller }) {
       </div>
     </div>
   );
+}
+
+/** Topics in tree order: each sub-topic right under its parent, siblings in the chosen order. */
+export function nested(topics: TopicSummary[], order: (a: TopicSummary, b: TopicSummary) => number): { topic: TopicSummary; depth: number }[] {
+  const shown = new Set(topics.map((t) => t.slug));
+  const children = new Map<string, TopicSummary[]>();
+  const roots: TopicSummary[] = [];
+  for (const t of topics) {
+    if (t.parent && shown.has(t.parent)) children.set(t.parent, [...(children.get(t.parent) ?? []), t]);
+    else roots.push(t);
+  }
+  const out: { topic: TopicSummary; depth: number }[] = [];
+  const walk = (t: TopicSummary, depth: number) => {
+    out.push({ topic: t, depth });
+    for (const child of (children.get(t.slug) ?? []).sort(order)) walk(child, depth + 1);
+  };
+  for (const t of roots.sort(order)) walk(t, 0);
+  return out;
 }
 
 function HealthTab({ c }: { c: Controller }) {

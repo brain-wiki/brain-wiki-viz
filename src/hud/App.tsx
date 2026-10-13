@@ -1,8 +1,10 @@
 import { useEffect, useRef, useState } from "preact/hooks";
 import type { Visit } from "../history";
 import type { Controller } from "../controller";
+import { type Branch, folderTree } from "../layout";
 import { FAMILIES, FAMILY_COLORS, shortTitle, type Family, type LinkEnd, type Target } from "../scene/Galaxy";
 import { useStore } from "../store";
+import type { TopicSummary } from "../types";
 import { Inspector } from "./Inspector";
 import { Minimap } from "./Minimap";
 import { Navigator } from "./Navigator";
@@ -11,7 +13,7 @@ import { Preview } from "./Preview";
 import { Dot, FLAG_COLOR, FLAG_LABEL, fmt, Icon, Kbd } from "./ui";
 
 const FAMILY_LABEL: Record<Family, string> = {
-  part_of: "Part of",
+  part_of: "Folders",
   depends_on: "Depends on",
   conflicts_with: "Conflicts",
   supersedes: "Supersedes",
@@ -20,7 +22,7 @@ const FAMILY_LABEL: Record<Family, string> = {
 };
 
 const FAMILY_HINT: Record<Family, string> = {
-  part_of: "Part of: a note belongs to its topic's hub",
+  part_of: "Folders: each note to its folder's note, and each folder to the one above it",
   depends_on: "Depends on: pulses run from the prerequisite to what depends on it",
   conflicts_with: "Conflicts: two notes contradict each other",
   supersedes: "Supersedes: pulses run from the old note to the one that replaced it",
@@ -55,7 +57,26 @@ function Breadcrumb({ c }: { c: Controller }) {
   const multi = c.world.constellations.length > 1;
   crumbs.push({ label: multi ? "Galaxy" : c.world.brain, go: () => c.focus({}), current: !focus.constellation && !focus.topic });
   if (con && multi) crumbs.push({ label: `${shortTitle(con.title)}${con.topics.length > 1 ? ` +${con.topics.length - 1}` : ""}`, color: con.color, go: () => c.focus({ constellation: con.id }), current: !focus.topic });
-  if (topic) crumbs.push({ label: topic.title, color: topic.color, go: () => c.focus({ topic: topic.slug }), current: !focus.note });
+  if (topic) {
+    // Parent topics, then the topic: the path through the topic tree (the cluster names its top).
+    const chain: TopicSummary[] = [];
+    for (let t = c.world.topics.find((x) => x.slug === topic.parent); t; t = c.world.topics.find((x) => x.slug === t!.parent)) chain.unshift(t);
+    for (const t of chain) {
+      if (!t.parent && con && shortTitle(con.title) === t.title) continue;
+      crumbs.push({ label: t.title, color: t.color, go: () => c.focus({ topic: t.slug }), current: false });
+    }
+    crumbs.push({ label: topic.title, color: topic.color, go: () => c.focus({ topic: topic.slug }), current: !focus.note });
+  }
+  if (focus.note && data && data.slug === focus.topic) {
+    // The folders between the topic and the note (design doc 12 §3).
+    const { branches, folderOf } = folderTree(data);
+    const path: Branch[] = [];
+    for (let b = branches.get(folderOf.get(focus.note) ?? ""); b && b.key !== ""; b = b.parent === null ? undefined : branches.get(b.parent)) path.unshift(b);
+    for (const b of path) {
+      if (b.note === focus.note) continue;
+      crumbs.push({ label: b.title, go: () => (b.note ? c.focus({ topic: data.slug, note: b.note }) : undefined), current: false });
+    }
+  }
   if (focus.note) crumbs.push({ label: noteTitle ?? "…", go: () => undefined, current: true });
   return (
     <nav class="crumbs" aria-label="Breadcrumb">

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { galaxyLayout, topicLayout, topicRadius } from "./layout";
+import { folderTree, galaxyLayout, topicLayout, topicRadius } from "./layout";
 import { chooseRevealed, focusToHash, hashToFocus, healthSeverity, levelOf, parentFocus, projectedRadius, viewFocus } from "./lod";
 import type { Constellation, TopicData, TopicSummary } from "./types";
 
@@ -37,6 +37,17 @@ describe("galaxy layout", () => {
     }
   });
 
+  it("puts a topic at the centre of the constellation its sub-topics form", () => {
+    const parent = { ...topic("people", 3, "c1"), parent: null };
+    const kids = Array.from({ length: 6 }, (_, i) => ({ ...topic(`p${i}`, 10 + i, "c1"), parent: "people" }));
+    const con: Constellation = { id: "c1", title: "People", color: "#888888", topics: ["people", ...kids.map((k) => k.slug)] };
+    const g = galaxyLayout([con], [parent, ...kids], 0);
+    const c = g.constellations.get("c1")!;
+    const p = g.topics.get("people")!;
+    const nearest = Math.min(...kids.map((k) => Math.hypot(g.topics.get(k.slug)!.x - c.x, g.topics.get(k.slug)!.z - c.z)));
+    expect(Math.hypot(p.x - c.x, p.z - c.z)).toBeLessThan(nearest);
+  });
+
   it("keeps constellations off the inbox core", () => {
     const g = galaxyLayout(constellations, topics, 20);
     for (const c of g.constellations.values()) {
@@ -69,6 +80,51 @@ describe("topic layout", () => {
       const d = Math.hypot(p.positions[i * 3], p.positions[i * 3 + 1], p.positions[i * 3 + 2]);
       expect(d).toBeLessThanOrEqual(r * 0.86);
     }
+    expect(Array.from(topicLayout(data, r).positions)).toEqual(Array.from(p.positions));
+  });
+});
+
+describe("folder tree", () => {
+  const paths = ["index", "a", "rfcs/rfcs", "rfcs/r1", "rfcs/r2", "rfcs/old/o1", "docs/d1"];
+  const data: TopicData = {
+    slug: "x",
+    title: "X",
+    color: "#888888",
+    hub: "index",
+    path: "topics/x",
+    nodes: paths.map((rel) => ({
+      id: rel.split("/").pop()!, title: `T ${rel}`, path: `topics/x/${rel}.md`, kind: rel === "index" ? "hub" : "note",
+      topic: "x", type: null, status: "active", privacy: "default", updated: null, aliases: [], degree: 1,
+      claims: 0, superseded_claims: 0, unverified_claims: 0, flags: [],
+    })),
+    links: [],
+    external: [],
+  };
+
+  it("follows the folders: folder notes are branch stars, plain folders are branches too", () => {
+    const { branches, folderOf } = folderTree(data);
+    expect([...branches.keys()].sort()).toEqual(["", "docs", "rfcs", "rfcs/old"]);
+    expect(branches.get("rfcs")).toMatchObject({ note: "rfcs", title: "T rfcs/rfcs", depth: 1, count: 4 });
+    expect(branches.get("rfcs/old")).toMatchObject({ parent: "rfcs", note: null, title: "old", depth: 2, count: 1 });
+    expect(branches.get("")!.count).toBe(7);
+    expect(folderOf.get("r1")).toBe("rfcs");
+    expect(folderOf.get("a")).toBe("");
+  });
+
+  it("clusters each branch around its star and draws the tree only below the topic", () => {
+    const r = topicRadius(7);
+    const p = topicLayout(data, r);
+    const at = (id: string) => {
+      const i = p.ids.indexOf(id);
+      return [p.positions[i * 3], p.positions[i * 3 + 1], p.positions[i * 3 + 2]];
+    };
+    const dist = (a: number[], b: number[]) => Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]);
+    expect(p.ids[0]).toBe("index");
+    expect(dist(at("r1"), at("rfcs"))).toBeLessThan(dist(at("r1"), at("index")));
+    expect(dist(at("r2"), at("rfcs"))).toBeLessThan(dist(at("r2"), at("d1")));
+    // 3 branches to their parents, plus r1, r2, o1, d1 to their branch; nothing for root notes.
+    expect(p.skeleton.length).toBe(7 * 6);
+    expect(p.branches.map((b) => b.key)).toEqual(["docs", "rfcs", "rfcs/old"]);
     expect(Array.from(topicLayout(data, r).positions)).toEqual(Array.from(p.positions));
   });
 });

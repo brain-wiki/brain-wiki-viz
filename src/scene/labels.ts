@@ -1,6 +1,6 @@
 import * as THREE from "three";
 
-export type LabelKind = "constellation" | "topic" | "hub" | "note" | "inbox";
+export type LabelKind = "constellation" | "topic" | "hub" | "branch" | "note" | "inbox";
 
 export interface LabelCandidate {
   key: string;
@@ -15,8 +15,8 @@ export interface LabelCandidate {
   emphasis?: boolean;
 }
 
-const CHAR_W: Record<LabelKind, number> = { constellation: 11, topic: 7.2, hub: 7.2, note: 6.6, inbox: 7.4 };
-const HEIGHT: Record<LabelKind, number> = { constellation: 26, topic: 24, hub: 24, note: 20, inbox: 24 };
+const CHAR_W: Record<LabelKind, number> = { constellation: 11, topic: 7.2, hub: 7.2, branch: 7, note: 6.6, inbox: 7.4 };
+const HEIGHT: Record<LabelKind, number> = { constellation: 26, topic: 24, hub: 24, branch: 22, note: 20, inbox: 24 };
 
 interface Slot {
   el: HTMLDivElement;
