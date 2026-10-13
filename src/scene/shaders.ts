@@ -118,7 +118,6 @@ export function starMaterial(): THREE.ShaderMaterial {
           if (f < 2.5) return vec3(1.0, 0.68, 0.22);   // stale
           if (f < 3.5) return vec3(0.74, 0.52, 1.0);   // unverified
           if (f < 4.5) return vec3(0.62, 0.68, 0.8);   // orphan
-          if (f < 5.5) return vec3(1.0, 0.5, 0.18);    // over budget
           return vec3(1.0, 0.42, 0.78);                // lint error
         }
         void main() {

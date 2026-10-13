@@ -6,7 +6,6 @@ export const FLAG_LABEL: Record<Flag, string> = {
   stale: "May be outdated",
   unverified: "Unverified facts",
   orphan: "Orphans",
-  over_budget: "Topic index too long",
   lint_error: "Format problems",
 };
 
@@ -15,7 +14,6 @@ export const FLAG_COLOR: Record<Flag, string> = {
   stale: "#ffad38",
   unverified: "#bd85ff",
   orphan: "#9aa6c4",
-  over_budget: "#ff8030",
   lint_error: "#ff6bc6",
 };
 

@@ -1,8 +1,8 @@
 // Payload shapes from the viz server (design doc 12 §6).
 
-export type Flag = "conflict" | "stale" | "orphan" | "unverified" | "over_budget" | "lint_error";
+export type Flag = "conflict" | "stale" | "orphan" | "unverified" | "lint_error";
 
-export const FLAGS: Flag[] = ["conflict", "stale", "unverified", "orphan", "over_budget", "lint_error"];
+export const FLAGS: Flag[] = ["conflict", "stale", "unverified", "orphan", "lint_error"];
 
 export type Rel =
   | "part_of"
