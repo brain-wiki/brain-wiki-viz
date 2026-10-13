@@ -1,6 +1,6 @@
 // Deterministic, local layouts (design doc 12 §3): the same brain always draws the same map,
 // and no layout spans the whole brain.
-import { hierarchy, pack } from "d3-hierarchy";
+import { packEnclose } from "d3-hierarchy";
 import type { Constellation, TopicData, TopicSummary } from "./types";
 import { rng } from "./util/rand";
 
@@ -257,27 +257,138 @@ export function noteWeight(lines: number): number {
   return Math.sqrt(Math.max(10, lines));
 }
 
-interface PackItem {
-  id: string;
-  key?: string; // a folder's key; notes and note clusters have none
-  plane: number; // the nesting level whose plane it sits on
-  weight: number;
-  first: boolean; // the topic index or a folder note (or the cluster holding it): placed first
-  children?: PackItem[];
+/** One folder's own notes, around its core note at the origin (unit space). */
+interface Cluster {
+  ids: string[];
+  xy: Float64Array; // x, y per note
+  radius: number;
+}
+
+const NOTE_GAP = 0.35; // between neighboring notes in a cluster, in unit space
+const SPREAD = 1.32; // ring spacing: the sunflower's closest neighbors sit 1.67 × SPREAD note radii apart
+
+/**
+ * One folder's own notes as a sunflower held by gravity: the core note at the center, then the
+ * rest by length, each on the golden angle at the radius the notes before it fill. Long notes
+ * gather at the core and short ones ring the rim, so the mass of a folder reads at a glance.
+ * A short relaxation then pushes apart the few neighbors that overlap near the core.
+ */
+function sunflower(notes: { id: string; r: number }[]): Cluster {
+  const n = notes.length;
+  const xy = new Float64Array(n * 2);
+  let filled = 0;
+  notes.forEach((note, k) => {
+    const rad = k === 0 ? 0 : Math.max(SPREAD * Math.sqrt(filled), notes[0].r + note.r + NOTE_GAP);
+    xy[k * 2] = rad * Math.cos(k * GOLDEN);
+    xy[k * 2 + 1] = rad * Math.sin(k * GOLDEN);
+    filled += note.r * note.r;
+  });
+  for (let iter = 0; iter < 60; iter++) {
+    let moved = false;
+    for (let i = 0; i < n; i++) {
+      for (let j = i + 1; j < n; j++) {
+        let dx = xy[j * 2] - xy[i * 2];
+        let dy = xy[j * 2 + 1] - xy[i * 2 + 1];
+        const min = notes[i].r + notes[j].r + NOTE_GAP;
+        if (dx * dx + dy * dy >= min * min * 0.998) continue; // the slack lets rounding settle
+        let d = Math.sqrt(dx * dx + dy * dy);
+        if (d < 1e-9) [dx, dy, d] = [Math.cos(j * GOLDEN), Math.sin(j * GOLDEN), 1];
+        const push = min - d;
+        // The core stays put; elsewhere both give way.
+        const share = i === 0 ? 1 : 0.5;
+        if (i !== 0) {
+          xy[i * 2] -= (dx / d) * push * share;
+          xy[i * 2 + 1] -= (dy / d) * push * share;
+        }
+        xy[j * 2] += (dx / d) * push * share;
+        xy[j * 2 + 1] += (dy / d) * push * share;
+        moved = true;
+      }
+    }
+    if (!moved) break;
+  }
+  let radius = 0;
+  notes.forEach((note, k) => (radius = Math.max(radius, Math.hypot(xy[k * 2], xy[k * 2 + 1]) + note.r)));
+  return { ids: notes.map((n) => n.id), xy, radius };
+}
+
+/** A folder laid out on its own, before it knows where it sits (unit space). */
+interface Body {
+  key: string;
+  depth: number;
+  r: number; // its circle
+  core: [number, number]; // where its links meet, from its circle's center
+  cluster: Cluster | null; // its own notes, around the core
+  subs: { body: Body; x: number; y: number }[]; // its sub-folders' circles, centers from the core
+  free: number | null; // the direction, from the core, kept clear for the link from its parent
 }
 
 const OUTLINE = 48; // segments per folder circle
+const FOLDER_GAP = 2.4; // between folder circles, in unit space
+const MARGIN = 1.2; // between a folder's contents and its outline
+const JUNCTION = 1; // the room a folder with no notes of its own keeps at its core
+const CIRCLE_SHADE = 0.25; // folder outlines stay faint so the links read as the tree
+const LINK_SHADE: [number, number] = [1, 0.7]; // a link, at its parent end and at its child end
 
 /**
- * Notes of one topic, packed as nested circles (design doc 12 §3): each folder is a circle that
- * holds its notes and its sub-folders' circles, so containment shows the hierarchy and the tree
- * needs no lines. A note's room grows with its length, so dense notes stand out. The circles face
- * the camera, and each nesting level sits one tier farther back along the view. The topic index
- * and each folder note sit at the heart of their circle. Deterministic: the same topic always
- * packs the same way.
+ * Sub-folder circles in orbit around a core of radius `core`: each gets a wedge of its own, as
+ * near the core as the wedges allow, the largest first and the rest alternating to either side.
+ * A circle stays inside its wedge, so the straight line from the core to it crosses no sibling.
+ * With `inbound`, an empty wedge opposite the largest keeps the way in from the parent clear;
+ * `free` is its direction.
+ */
+function orbit(core: number, radii: number[], inbound: boolean): { at: [number, number][]; free: number | null } {
+  const n = radii.length;
+  if (!n) return { at: [], free: null };
+  const sizes = inbound ? [...radii, 0] : radii; // the way in: a wedge with nothing in it
+  const dist = (r: number, ring: number) => Math.max(core + FOLDER_GAP + r, ring);
+  const wedge = (r: number, ring: number) => 2 * Math.asin(Math.min(1, (r + FOLDER_GAP / 2) / dist(r, ring)));
+  const total = (ring: number) => sizes.reduce((s, r) => s + wedge(r, ring), 0);
+  let ring = 0;
+  if (total(0) > 2 * Math.PI) {
+    // asin(x) <= πx/2, so this ring always leaves room; bisect down to the tightest that does.
+    let [lo, hi] = [0, sizes.reduce((s, r) => s + r + FOLDER_GAP / 2, 0)];
+    for (let k = 0; k < 40; k++) {
+      const mid = (lo + hi) / 2;
+      if (total(mid) > 2 * Math.PI) lo = mid;
+      else hi = mid;
+    }
+    ring = hi;
+  }
+  const bySize = radii.map((_, i) => i).sort((a, b) => radii[b] - radii[a] || a - b);
+  const seq: number[] = [];
+  bySize.forEach((i, k) => (k % 2 ? seq.push(i) : seq.unshift(i)));
+  if (inbound) seq.push(n); // between the two smallest, opposite the largest
+  const spare = (2 * Math.PI - total(ring)) / sizes.length;
+  const angle = new Array<number>(sizes.length);
+  let a = 0;
+  for (const i of seq) {
+    const w = wedge(sizes[i], ring);
+    angle[i] = a + w / 2;
+    a += w + spare;
+  }
+  const turn = angle[bySize[0]];
+  const at = radii.map((r, i): [number, number] => {
+    const d = dist(r, ring);
+    return [d * Math.cos(angle[i] - turn), d * Math.sin(angle[i] - turn)];
+  });
+  return { at, free: inbound ? angle[n] - turn : null };
+}
+
+const rotate = ([x, y]: [number, number], t: number): [number, number] => [x * Math.cos(t) - y * Math.sin(t), x * Math.sin(t) + y * Math.cos(t)];
+
+/**
+ * Notes of one topic (design doc 12 §3), laid out by gravity and linked by folder. Each folder
+ * is a circle on its own plane, one tier farther back per nesting level. At its core sits its own
+ * notes' sunflower, the folder note in the middle and long notes nearest it; its sub-folders orbit
+ * that core, and a line runs from the core to each of theirs, so the tree reads as links across
+ * the tiers and no link crosses a sibling. Deterministic: the same topic always lays out the
+ * same way.
  */
 export function topicLayout(topic: TopicData, radius: number): StarPlacement {
   const { branches, folderOf } = folderTree(topic);
+  const empty: StarPlacement = { ids: [], positions: new Float32Array(), branches: [], skeleton: new Float32Array(), skeletonShade: new Float32Array() };
+  if (!folderOf.size) return empty;
   const byId = new Map(topic.nodes.map((n) => [n.id, n]));
   const children = new Map<string, string[]>();
   for (const b of branches.values()) {
@@ -285,71 +396,79 @@ export function topicLayout(topic: TopicData, radius: number): StarPlacement {
   }
   const notesIn = new Map<string, string[]>();
   for (const [id, key] of folderOf) notesIn.set(key, [...(notesIn.get(key) ?? []), id]);
-  const build = (key: string): PackItem => {
+  const build = (key: string): Body => {
     const b = branches.get(key)!;
-    const notes: PackItem[] = (notesIn.get(key) ?? []).map((id) => ({
-      id,
-      plane: b.depth,
-      weight: noteWeight(byId.get(id)?.lines ?? 0),
-      first: id === b.note,
-    }));
+    const core = key === "" ? topic.hub : b.note;
+    const notes = (notesIn.get(key) ?? [])
+      .map((id) => ({ id, r: Math.sqrt(noteWeight(byId.get(id)?.lines ?? 0)) }))
+      .sort((p, q) => Number(q.id === core) - Number(p.id === core) || q.r - p.r || p.id.localeCompare(q.id));
+    const cluster = notes.length ? sunflower(notes) : null;
+    const coreR = cluster?.radius ?? JUNCTION;
     const subs = (children.get(key) ?? []).map(build);
-    // A folder's own notes pack as one cluster beside its sub-folders; loose among them, small
-    // notes would string out along the edge of the folder's circle.
-    const own: PackItem[] =
-      subs.length && notes.length > 1
-        ? [{ id: `notes:${key}`, plane: b.depth, weight: 0, first: notes.some((n) => n.first), children: notes }]
-        : notes;
-    return { id: `branch:${key}`, key, plane: b.depth, weight: 0, first: false, children: [...own, ...subs] };
+    const { at: where, free } = orbit(coreR, subs.map((s) => s.r), key !== "");
+    const e = packEnclose([{ x: 0, y: 0, r: coreR }, ...subs.map((s, i) => ({ x: where[i][0], y: where[i][1], r: s.r }))]);
+    return { key, depth: b.depth, r: e.r + MARGIN, core: [-e.x, -e.y], cluster, subs: subs.map((body, i) => ({ body, x: where[i][0], y: where[i][1] })), free };
   };
-  const empty: StarPlacement = { ids: [], positions: new Float32Array(), branches: [], skeleton: new Float32Array(), skeletonShade: new Float32Array() };
-  if (!folderOf.size) return empty;
+  const root = build("");
 
-  const size = 2 * radius * 0.85;
-  const root = hierarchy(build(""), (d) => d.children)
-    .sum((d) => (d.children ? 0 : d.weight))
-    .sort((a, b) => Number(b.data.first) - Number(a.data.first) || (b.value ?? 0) - (a.value ?? 0) || a.data.id.localeCompare(b.data.id));
-  const packed = pack<PackItem>().size([size, size]).padding(size * 0.008)(root);
-
+  const scale = (radius * 0.85) / root.r;
   const TIER = radius * 0.04; // how much farther back each nesting level sits
   const at = (x: number, y: number, depth: number): [number, number, number] => {
-    const across = x - size / 2;
-    const up = size / 2 - y;
     const back = depth * TIER;
-    return [across - VIEW[0] * back, up * SCREEN_UP[1] - VIEW[1] * back, up * SCREEN_UP[2] - VIEW[2] * back];
+    return [x * scale - VIEW[0] * back, y * scale * SCREEN_UP[1] - VIEW[1] * back, y * scale * SCREEN_UP[2] - VIEW[2] * back];
   };
   const pos = new Map<string, [number, number, number]>();
-  const circles: { key: string; x: number; y: number; r: number; depth: number }[] = [];
-  for (const node of packed.descendants()) {
-    if (node.data.key !== undefined) {
-      if (node.data.key !== "") circles.push({ key: node.data.key, x: node.x, y: node.y, r: node.r, depth: node.data.plane });
-    } else if (!node.children) {
-      pos.set(node.data.id, at(node.x, node.y, node.data.plane)); // a note sits on its folder's plane
+  const circles = new Map<string, { x: number; y: number; r: number; depth: number }>();
+  const cores = new Map<string, [number, number, number]>();
+  // Top down: each folder turns about its circle's center, which its parent has fixed, until its
+  // clear wedge faces the parent's core.
+  const place = (body: Body, x: number, y: number, from: [number, number] | null) => {
+    let t = 0;
+    for (let k = 0; from && body.free !== null && k < 4; k++) {
+      const [ox, oy] = rotate(body.core, t);
+      t = Math.atan2(from[1] - y - oy, from[0] - x - ox) - body.free;
     }
-  }
+    const [ox, oy] = rotate(body.core, t);
+    const [cx, cy] = [x + ox, y + oy];
+    circles.set(body.key, { x, y, r: body.r, depth: body.depth });
+    cores.set(body.key, at(cx, cy, body.depth));
+    const c = body.cluster;
+    c?.ids.forEach((id, k) => {
+      const [px, py] = rotate([c.xy[k * 2], c.xy[k * 2 + 1]], t);
+      pos.set(id, at(cx + px, cy + py, body.depth));
+    });
+    for (const s of body.subs) {
+      const [sx, sy] = rotate([s.x, s.y], t);
+      place(s.body, cx + sx, cy + sy, [cx, cy]);
+    }
+  };
+  place(root, 0, 0, null);
 
   const ids = [...folderOf.keys()].filter((id) => pos.has(id)).sort((a, b) => Number(b === topic.hub) - Number(a === topic.hub));
   const positions = new Float32Array(ids.length * 3);
   ids.forEach((id, i) => positions.set(pos.get(id)!, i * 3));
-  // Each folder's circle, faint, on its own plane: the hierarchy without a line per note.
   const segments: number[] = [];
   const shade: number[] = [];
-  for (const c of circles) {
+  for (const [key, c] of circles) {
+    if (key === "") continue; // the nebula already shows the topic's bounds
     for (let k = 0; k < OUTLINE; k++) {
       const a0 = (k / OUTLINE) * Math.PI * 2;
       const a1 = ((k + 1) / OUTLINE) * Math.PI * 2;
       segments.push(...at(c.x + c.r * Math.cos(a0), c.y + c.r * Math.sin(a0), c.depth));
       segments.push(...at(c.x + c.r * Math.cos(a1), c.y + c.r * Math.sin(a1), c.depth));
-      shade.push(0.6, 0.6);
+      shade.push(CIRCLE_SHADE, CIRCLE_SHADE);
     }
   }
-  const circleOf = new Map(circles.map((c) => [c.key, c]));
   const placedBranches = [...branches.values()]
-    .filter((b) => b.key !== "" && circleOf.has(b.key))
+    .filter((b) => b.key !== "" && circles.has(b.key))
     .sort((a, b) => a.depth - b.depth || a.key.localeCompare(b.key))
     .map((b) => {
-      const c = circleOf.get(b.key)!;
-      return { ...b, position: at(c.x, c.y - c.r, c.depth), center: at(c.x, c.y, c.depth), radius: c.r };
+      const c = circles.get(b.key)!;
+      return { ...b, position: at(c.x, c.y + c.r, c.depth), center: at(c.x, c.y, c.depth), radius: c.r * scale };
     });
+  for (const b of placedBranches) {
+    segments.push(...cores.get(b.parent!)!, ...cores.get(b.key)!);
+    shade.push(...LINK_SHADE);
+  }
   return { ids, positions, branches: placedBranches, skeleton: new Float32Array(segments), skeletonShade: new Float32Array(shade) };
 }

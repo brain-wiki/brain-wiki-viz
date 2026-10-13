@@ -28,7 +28,7 @@ const FAMILY_LABEL: Record<Family, string> = {
 };
 
 const FAMILY_HINT: Record<Family, string> = {
-  part_of: "Folders: each note to its folder's note, and each folder to the one above it",
+  part_of: "Folders: a circle per folder, and a line from each folder to the one above it",
   depends_on: "Depends on: pulses run from the prerequisite to what depends on it",
   conflicts_with: "Conflicts: two notes contradict each other",
   supersedes: "Replaces: pulses run from the old note to the one that replaced it",
@@ -528,9 +528,10 @@ function Help({ c }: { c: Controller }) {
         <section class="help-section help-wide">
           <h4>Reading the map</h4>
           <p class="help-list">
-            A circle is a folder, holding its notes and sub-folders · star size: how much a note
-            holds · brightness: how recently it changed · a ring: it has issues · pulses flow
-            prerequisite → dependent (blue) and old → new (amber)
+            A circle is a folder; a line joins it to the folder above, one tier farther back ·
+            long notes gather at a folder's core · star size: how much a note holds ·
+            brightness: how recently it changed · a ring: it has issues · pulses flow prerequisite
+            → dependent (blue) and old → new (amber)
           </p>
         </section>
       </div>

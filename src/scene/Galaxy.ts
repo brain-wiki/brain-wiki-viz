@@ -709,11 +709,11 @@ export class Galaxy {
       }
       lines.set(family, trail);
     }
-    // The folder tree (design doc 12 §3): each branch to its parent, each note to its branch.
+    // The folder tree (design doc 12 §3): each folder's circle, and a link to its parent folder.
     if (placement.skeleton.length) {
       const tree: number[] = [];
       for (const t of placement.skeletonShade) {
-        const k = 0.5 + 0.3 * t; // brighter toward the parent
+        const k = 0.3 + 0.7 * t;
         tree.push(tr * k, tg * k, tb * k);
       }
       const st = FAMILY_STYLE.part_of;
