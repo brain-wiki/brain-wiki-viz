@@ -1,8 +1,8 @@
-import { useCallback } from "preact/hooks";
+import { useCallback, useMemo } from "preact/hooks";
 import type { Controller } from "../controller";
 import { useStore } from "../store";
 import type { LinkTarget } from "../types";
-import { Markdown } from "./Markdown";
+import { type Ctx, linkContext, linkedText, Markdown } from "./Markdown";
 import { Dot, Icon } from "./ui";
 
 /** The selected note rendered like Obsidian's reading view: inline title, properties, body. */
@@ -38,7 +38,7 @@ export function Preview({ c }: { c: Controller }) {
           <>
             {/* Like Obsidian's inline title, unless the note already opens with its own H1. */}
             {!/^\s*#\s+\S/.test(ready.markdown ?? "") && <h1 class="md-inline-title">{ready.title}</h1>}
-            {ready.properties && <Properties props={ready.properties} />}
+            {ready.properties && <Properties props={ready.properties} links={ready.links ?? {}} onOpen={onOpen} />}
             {ready.markdown != null ? (
               <Markdown text={ready.markdown} links={ready.links ?? {}} onOpen={onOpen} />
             ) : (
@@ -52,9 +52,15 @@ export function Preview({ c }: { c: Controller }) {
 }
 
 const HIDDEN = new Set(["title"]);
+const CLAIMS = new Set(["bw-claims", "bw-claims-superseded"]);
+const CLAIM_META = /\s*\{([^{}]*)\}\s*$/;
 
-/** Obsidian's properties table: one row per frontmatter key; lists and tags as chips. */
-function Properties({ props }: { props: Record<string, unknown> }) {
+/**
+ * Obsidian's properties table: one row per frontmatter key; lists and tags as chips. As in
+ * Obsidian, wikilinks in values (relations such as `bw-part_of`) open the note they point to.
+ */
+function Properties({ props, links, onOpen }: { props: Record<string, unknown>; links: Record<string, LinkTarget>; onOpen: (t: LinkTarget) => void }) {
+  const ctx = useMemo(() => linkContext(links, onOpen), [links, onOpen]);
   const rows = Object.entries(props).filter(([k, v]) => !HIDDEN.has(k) && v !== null && v !== "");
   if (!rows.length) return null;
   return (
@@ -64,7 +70,7 @@ function Properties({ props }: { props: Record<string, unknown> }) {
         {rows.map(([k, v]) => (
           <div class="md-prop" key={k}>
             <dt>{k}</dt>
-            <dd>{value(k, v)}</dd>
+            <dd>{value(k, v, ctx)}</dd>
           </div>
         ))}
       </dl>
@@ -72,11 +78,11 @@ function Properties({ props }: { props: Record<string, unknown> }) {
   );
 }
 
-function value(key: string, v: unknown) {
+function value(key: string, v: unknown, ctx: Ctx) {
   if (Array.isArray(v)) {
     return v.map((x, i) => (
       <span key={i} class={key === "tags" ? "md-tag" : "md-chip"}>
-        {key === "tags" ? `#${String(x)}` : String(x)}
+        {key === "tags" ? `#${String(x)}` : item(key, String(x), ctx)}
       </span>
     ));
   }
@@ -89,5 +95,13 @@ function value(key: string, v: unknown) {
       </a>
     );
   }
-  return s;
+  return item(key, s, ctx);
+}
+
+/** One value with live wikilinks; a claim's `{id: …}` block moves to a tooltip. */
+function item(key: string, s: string, ctx: Ctx) {
+  const meta = CLAIMS.has(key) ? CLAIM_META.exec(s) : null;
+  if (!meta) return linkedText(s, ctx);
+  const text = linkedText(s.slice(0, meta.index), ctx);
+  return <span title={meta[1]}>{key === "bw-claims-superseded" ? <s>{text}</s> : text}</span>;
 }

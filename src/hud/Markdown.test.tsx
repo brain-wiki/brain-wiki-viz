@@ -1,6 +1,6 @@
 import type { VNode } from "preact";
 import { describe, expect, it } from "vitest";
-import { renderMarkdown } from "./Markdown";
+import { linkContext, linkedText, renderMarkdown } from "./Markdown";
 
 type Node = VNode<Record<string, unknown>> | string | number | null | undefined | boolean | Node[];
 
@@ -60,5 +60,20 @@ describe("note markdown", () => {
     expect(els.find((e) => e.props.class === "md-tag")?.text).toBe("#search");
     expect(els.find((e) => e.tag === "mark")?.text).toBe("hot");
     expect(els.filter((e) => e.tag === "td").map((e) => e.text)).toEqual(["1", "2"]);
+  });
+});
+
+describe("property values", () => {
+  it("open relation targets and keep the qualifier and note as text", () => {
+    const opened: string[] = [];
+    const ctx = linkContext(links, (t) => opened.push(t.id));
+    const els = walk(linkedText("[[fts5|FTS5]] (replaced) — took 800 ms, #not-a-tag", ctx) as Node);
+    const anchor = els.find((e) => e.tag === "a");
+    expect(anchor?.text).toBe("FTS5");
+    (anchor?.props.onClick as (e: { preventDefault: () => void }) => void)({ preventDefault: () => {} });
+    expect(opened).toEqual(["N1"]);
+    expect(els.some((e) => e.props.class === "md-tag")).toBe(false);
+    const missing = walk(linkedText("[[elsewhere]]", ctx) as Node);
+    expect(missing[0].props.class).toBe("md-internal unresolved");
   });
 });

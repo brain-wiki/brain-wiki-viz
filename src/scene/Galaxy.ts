@@ -153,7 +153,7 @@ function recency(updated: string | null | undefined, now: number): number {
   return 0.45 + 0.55 * Math.exp(-days / 75);
 }
 
-/** "A · B · C · …" titles shortened to their largest topic, for labels on the map. */
+/** "A · B · C · …" titles shortened to their first topic (the hub topic, else the largest), for labels on the map. */
 export function shortTitle(title: string): string {
   return title.split(" · ")[0];
 }

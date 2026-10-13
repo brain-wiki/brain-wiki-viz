@@ -20,8 +20,7 @@ export function Markdown({ text, links, onOpen }: { text: string; links: Record<
 /** The rendering itself, free of hooks so tests can inspect the element tree. */
 export function renderMarkdown(text: string, links: Record<string, LinkTarget>, onOpen: (t: LinkTarget) => void): JSX.Element {
   const tree = fromMarkdown(stripObsidianComments(text), { extensions: [gfm()], mdastExtensions: [gfmFromMarkdown()] });
-  const lower = new Map(Object.entries(links).map(([k, v]) => [k.toLowerCase(), v]));
-  const ctx: Ctx = { resolve: (target) => links[target] ?? lower.get(target.toLowerCase()), onOpen };
+  const ctx = linkContext(links, onOpen);
   const notes = tree.children.filter((n): n is Extract<RootContent, { type: "footnoteDefinition" }> => n.type === "footnoteDefinition");
   return (
     <div class="md">
@@ -40,9 +39,31 @@ export function renderMarkdown(text: string, links: Record<string, LinkTarget>, 
   );
 }
 
-interface Ctx {
+export interface Ctx {
   resolve: (target: string) => LinkTarget | undefined;
   onOpen: (t: LinkTarget) => void;
+}
+
+/** Resolves link text to the notes the server resolved for this profile (exact, then any case). */
+export function linkContext(links: Record<string, LinkTarget>, onOpen: (t: LinkTarget) => void): Ctx {
+  const lower = new Map(Object.entries(links).map(([k, v]) => [k.toLowerCase(), v]));
+  return { resolve: (target) => links[target] ?? lower.get(target.toLowerCase()), onOpen };
+}
+
+const WIKILINK = /(!?)\[\[([^[\]\n]+?)\]\]/g;
+
+/** Plain text whose wikilinks open notes, as Obsidian shows a property value: no other Markdown. */
+export function linkedText(text: string, ctx: Ctx): ComponentChildren {
+  const out: ComponentChildren[] = [];
+  let last = 0;
+  for (const m of text.matchAll(WIKILINK)) {
+    const at = m.index ?? 0;
+    if (at > last) out.push(text.slice(last, at));
+    out.push(wikilink(m[2], m[1] === "!", ctx, at));
+    last = at + m[0].length;
+  }
+  if (last < text.length) out.push(text.slice(last));
+  return out;
 }
 
 /** Obsidian `%% comments %%` never render; leave fenced code alone. */
