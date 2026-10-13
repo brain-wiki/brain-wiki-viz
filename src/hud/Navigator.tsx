@@ -5,14 +5,26 @@ import { useStore } from "../store";
 import { FLAGS, type Flag, type TopicSummary } from "../types";
 import { Dot, FLAG_COLOR, FLAG_LABEL, fmt, Icon } from "./ui";
 
-type Sort = "size" | "health" | "recent" | "name";
+export type Sort = "size" | "health" | "recent" | "name";
 
-function sorter(sort: Sort) {
-  return (a: TopicSummary, b: TopicSummary) => {
-    if (sort === "health") return b.flagged / Math.max(1, b.notes) - a.flagged / Math.max(1, a.notes) || b.flagged - a.flagged;
-    if (sort === "recent") return (b.updated ?? "").localeCompare(a.updated ?? "") || b.recent - a.recent;
-    if (sort === "name") return a.title.localeCompare(b.title);
-    return b.notes - a.notes || a.title.localeCompare(b.title);
+/** Names as people read them: case aside, and numbers in order ("2" before "10"). */
+const byName = (a: string, b: string) => a.localeCompare(b, undefined, { sensitivity: "base", numeric: true });
+
+/** What a list sorts on: a topic, or a group's topics taken together. */
+interface Sortable {
+  title: string;
+  notes: number;
+  flagged: number;
+  updated: string | null;
+  recent: number;
+}
+
+export function sorter(sort: Sort) {
+  return (a: Sortable, b: Sortable) => {
+    if (sort === "health") return b.flagged / Math.max(1, b.notes) - a.flagged / Math.max(1, a.notes) || b.flagged - a.flagged || byName(a.title, b.title);
+    if (sort === "recent") return (b.updated ?? "").localeCompare(a.updated ?? "") || b.recent - a.recent || byName(a.title, b.title);
+    if (sort === "size") return b.notes - a.notes || byName(a.title, b.title);
+    return byName(a.title, b.title);
   };
 }
 
@@ -20,7 +32,7 @@ function Atlas({ c }: { c: Controller }) {
   const world = c.world;
   const focus = useStore(c.store, (s) => s.focus);
   const [filter, setFilter] = useState("");
-  const [sort, setSort] = useState<Sort>("size");
+  const [sort, setSort] = useState<Sort>("name");
   const [open, setOpen] = useState<Record<string, boolean>>({});
   const bySlug = useMemo(() => new Map(world.topics.map((t) => [t.slug, t])), [world]);
   const maxNotes = Math.max(1, ...world.topics.map((t) => t.notes));
@@ -31,24 +43,30 @@ function Atlas({ c }: { c: Controller }) {
       <div class="nav-tools">
         <input class="field" placeholder="Filter topics" value={filter} onInput={(e) => setFilter((e.target as HTMLInputElement).value)} aria-label="Filter topics" />
         <select class="field select" value={sort} onChange={(e) => setSort((e.target as HTMLSelectElement).value as Sort)} aria-label="Sort topics">
+          <option value="name">Name</option>
           <option value="size">Most notes</option>
           <option value="health">Most issues</option>
           <option value="recent">Recently changed</option>
-          <option value="name">Name</option>
         </select>
       </div>
       <div class="tree" role="tree">
-        {world.constellations.map((con) => {
-          const topics = nested(
-            con.topics
-              .map((s) => bySlug.get(s))
-              .filter((t): t is TopicSummary => !!t && (!needle || t.title.toLowerCase().includes(needle) || t.slug.includes(needle))),
-            sorter(sort),
-          );
+        {world.constellations
+          .map((con) => {
+            const topics = nested(
+              con.topics
+                .map((s) => bySlug.get(s))
+                .filter((t): t is TopicSummary => !!t && (!needle || t.title.toLowerCase().includes(needle) || t.slug.includes(needle))),
+              sorter(sort),
+            );
+            const sum = (pick: (t: TopicSummary) => number) => topics.reduce((s, { topic: t }) => s + pick(t), 0);
+            const updated = topics.reduce((m, { topic: t }) => ((t.updated ?? "") > m ? (t.updated ?? "") : m), "") || null;
+            const group = { title: shortTitle(con.title), notes: sum((t) => t.notes), flagged: sum((t) => t.flagged), updated, recent: sum((t) => t.recent) };
+            return { con, topics, group };
+          })
+          .sort((a, b) => sorter(sort)(a.group, b.group))
+          .map(({ con, topics, group: { notes, flagged } }) => {
           if (needle && topics.length === 0) return null;
           const expanded = single || !!needle || open[con.id] || focus.constellation === con.id;
-          const notes = topics.reduce((s, { topic: t }) => s + t.notes, 0);
-          const flagged = topics.reduce((s, { topic: t }) => s + t.flagged, 0);
           return (
             <div class="tree-group" key={con.id}>
               {!single && (
