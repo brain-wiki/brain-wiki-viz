@@ -10,7 +10,10 @@ import { Minimap } from "./Minimap";
 import { Navigator } from "./Navigator";
 import { Palette } from "./Palette";
 import { Preview } from "./Preview";
+import { keys } from "../util/keys";
 import { Dot, FLAG_COLOR, FLAG_LABEL, fmt, Icon, Kbd } from "./ui";
+
+const K = keys();
 
 const FAMILY_LABEL: Record<Family, string> = {
   part_of: "Folders",
@@ -164,10 +167,10 @@ function NavButtons({ c }: { c: Controller }) {
   const fwd = trail.entries[trail.index + 1];
   return (
     <div class="nav-buttons" ref={ref}>
-      <button class="icon-btn" disabled={!back} onClick={() => c.back()} aria-label="Back" title={back ? `Back to ${visitLabel(c, back).title} (Alt+←)` : "Back"}>
+      <button class="icon-btn" disabled={!back} onClick={() => c.back()} aria-label="Back" title={back ? `Back to ${visitLabel(c, back).title} (${K.join(K.history, "←")})` : "Back"}>
         <Icon name="back" />
       </button>
-      <button class="icon-btn" disabled={!fwd} onClick={() => c.forward()} aria-label="Forward" title={fwd ? `Forward to ${visitLabel(c, fwd).title} (Alt+→)` : "Forward"}>
+      <button class="icon-btn" disabled={!fwd} onClick={() => c.forward()} aria-label="Forward" title={fwd ? `Forward to ${visitLabel(c, fwd).title} (${K.join(K.history, "→")})` : "Forward"}>
         <Icon name="forward" />
       </button>
       <button class={`icon-btn${open ? " on" : ""}`} disabled={trail.entries.length < 2} onClick={() => c.store.set({ historyOpen: !open })} aria-label="History" aria-expanded={open} title="Everything opened in this tab">
@@ -430,7 +433,7 @@ function HoverCard({ c }: { c: Controller }) {
 
 function Help({ c }: { c: Controller }) {
   const rows: [string, string][] = [
-    ["/  or  Ctrl/⌘ K", "Search notes and topics"],
+    [`/  or  ${K.join(K.mod, "K")}`, "Search notes and topics"],
     ["Click", "Zoom to a group or topic; open a note"],
     ["P", "Show or hide the selected note's preview"],
     ["Scroll", "Zoom toward the cursor; detail appears as you get closer"],
@@ -438,8 +441,8 @@ function Help({ c }: { c: Controller }) {
     ["Moving pulses", "Direction: prerequisite → dependent (blue), old → new (amber)"],
     ["Hover a trail", "See the two notes it connects; click to go to the other end"],
     ["Esc", "Up one level, or close"],
-    ["Alt ↑  ·  Alt ↓", "Up or down one nesting level: note, folder, topic, parent topic, group"],
-    ["Alt ←  ·  Alt →", "Back and forward through what you opened (or the buttons by the breadcrumb)"],
+    [`${K.join(K.alt, "↑")}  ·  ${K.join(K.alt, "↓")}`, "Up or down one nesting level: note, folder, topic, parent topic, group"],
+    [`${K.join(K.history, "←")}  ·  ${K.join(K.history, "→")}`, "Back and forward through what you opened (or the buttons by the breadcrumb)"],
     ["H", "Highlight issues"],
     ["L", "Labels"],
     ["R", "Back to the overview"],
