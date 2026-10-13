@@ -438,6 +438,7 @@ function Help({ c }: { c: Controller }) {
     ["Moving pulses", "Direction: prerequisite → dependent (blue), old → new (amber)"],
     ["Hover a trail", "See the two notes it connects; click to go to the other end"],
     ["Esc", "Up one level, or close"],
+    ["Alt ↑  ·  Alt ↓", "Up or down one nesting level: note, folder, topic, parent topic, group"],
     ["Alt ←  ·  Alt →", "Back and forward through what you opened (or the buttons by the breadcrumb)"],
     ["H", "Highlight issues"],
     ["L", "Labels"],
@@ -482,6 +483,11 @@ export function App({ c }: { c: Controller }) {
       if (e.key === "Escape") {
         if (typing) (t as HTMLInputElement).blur();
         c.up();
+        return;
+      }
+      if (!typing && e.altKey && !e.metaKey && !e.ctrlKey && (e.key === "ArrowUp" || e.key === "ArrowDown")) {
+        e.preventDefault();
+        void (e.key === "ArrowUp" ? c.levelUp() : c.levelDown());
         return;
       }
       if (typing || e.metaKey || e.ctrlKey || e.altKey) return;

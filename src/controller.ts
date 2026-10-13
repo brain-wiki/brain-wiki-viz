@@ -1,6 +1,7 @@
 import type { Source } from "./api";
 import { Trail, type TrailState } from "./history";
 import { focusToHash, hashToFocus, levelOf, parentFocus, viewFocus, type Focus, type ViewSample } from "./lod";
+import { nestChildren, nestUp } from "./nesting";
 import { FAMILIES, Galaxy, type Layers, type Quality, type QualityMode, type Target } from "./scene/Galaxy";
 import { Store } from "./store";
 import type { Health, NoteDetail, RunSummary, SearchHit, TopicData, World } from "./types";
@@ -212,6 +213,36 @@ export class Controller {
     if (s.run) return this.setRun(null);
     if (levelOf(s.focus) === "galaxy") return this.galaxy?.resetView();
     this.focus(parentFocus(s.focus));
+  }
+
+  /** Where Alt+↑ came from, so Alt+↓ can go back down the same way. */
+  private climbed: Focus[] = [];
+
+  /** Alt+↑: one nesting level up, through folders and parent topics (design doc 12 §5). */
+  async levelUp(): Promise<void> {
+    const f = this.store.state.focus;
+    const data = f.topic ? await this.source.topic(f.topic) : null;
+    const up = nestUp(f, this.world, data);
+    if (!up) return;
+    this.climbed.push(f);
+    this.focus(up);
+  }
+
+  /** Alt+↓: one level down, back the way Alt+↑ came, else into the biggest place inside. */
+  async levelDown(): Promise<void> {
+    const f = this.store.state.focus;
+    const here = focusToHash(f);
+    const last = this.climbed.pop();
+    if (last) {
+      const data = last.topic ? await this.source.topic(last.topic) : null;
+      const up = nestUp(last, this.world, data);
+      if (up && focusToHash(up) === here) return this.focus(last);
+      this.climbed = [];
+    }
+    const data = f.topic ? await this.source.topic(f.topic) : null;
+    const [first] = nestChildren(f, this.world, data);
+    if (first) this.focus(first);
+    else this.toast("Nothing below this note.");
   }
 
   select(t: Target | null): void {
