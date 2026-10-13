@@ -1,6 +1,5 @@
 // Deterministic, local layouts (design doc 12 §3): the same brain always draws the same map,
 // and no layout spans the whole brain.
-import { forceLink, forceManyBody, forceSimulation, type SimNode } from "d3-force-3d";
 import type { Constellation, TopicData, TopicSummary } from "./types";
 import { rng } from "./util/rand";
 
@@ -19,6 +18,13 @@ export interface GalaxyLayout {
 }
 
 const GOLDEN = Math.PI * (3 - Math.sqrt(5));
+
+/** Camera tilt from straight down, in radians. The map is 2.5D: fixed tilt and heading. */
+export const TILT = 0.68;
+/** From what the camera looks at toward the camera. */
+export const VIEW: [number, number, number] = [0, Math.cos(TILT), Math.sin(TILT)];
+/** Up on screen: with `x`, the plane that faces the camera. */
+export const SCREEN_UP: [number, number, number] = [0, Math.sin(TILT), -Math.cos(TILT)];
 
 export function topicRadius(notes: number): number {
   return 14 + 5.5 * Math.sqrt(Math.max(1, notes));
@@ -143,12 +149,15 @@ export interface StarPlacement {
   branches: BranchPlacement[];
   /** Faint tree lines as segment pairs: each branch to its parent, each note to its branch. */
   skeleton: Float32Array;
+  /** Per skeleton vertex, how far along its line it is: 1 at the parent end, 0 at the child. */
+  skeletonShade: Float32Array;
 }
 
 export interface Branch {
   key: string; // folder path relative to the topic folder; "" is the topic itself
   parent: string | null;
   title: string; // the folder note's title, else the folder name
+  label: string; // the title without what its parent folders already say (the map's label)
   note: string | null; // the folder note: the branch's star; null when the folder has none
   depth: number;
   count: number; // notes in the folder and everything below it
@@ -179,6 +188,20 @@ export function topicFolder(topic: TopicData): string {
 }
 
 /**
+ * A folder's title without the leading " · " parts its parent folders' titles already say, so a
+ * generated title like "Lumen guide · Sync · Conflicts" labels its star "Conflicts".
+ */
+function shortLabel(b: Branch, branches: Map<string, Branch>): string {
+  const said = new Set<string>();
+  for (let p = b.parent === null ? undefined : branches.get(b.parent); p; p = p.parent === null ? undefined : branches.get(p.parent)) {
+    for (const part of p.title.split(" · ")) said.add(part.trim().toLowerCase());
+  }
+  const parts = b.title.split(" · ");
+  while (parts.length > 1 && said.has(parts[0].trim().toLowerCase())) parts.shift();
+  return parts.join(" · ");
+}
+
+/**
  * The folder tree inside a topic (design doc 12 §3): the map's hierarchy always follows the
  * folders, as Obsidian shows them. A sub-folder is a branch; its folder note (`x/x.md`,
  * `x/index.md`, `x/readme.md`) is the branch's star.
@@ -187,7 +210,7 @@ export function folderTree(topic: TopicData): FolderTree {
   const root = topicFolder(topic);
   const prefix = root ? `${root}/` : "";
   const branches = new Map<string, Branch>();
-  branches.set("", { key: "", parent: null, title: topic.title, note: topic.hub, depth: 0, count: 0 });
+  branches.set("", { key: "", parent: null, title: topic.title, label: topic.title, note: topic.hub, depth: 0, count: 0 });
   const ensure = (key: string): Branch => {
     let b = branches.get(key);
     if (!b) {
@@ -195,7 +218,7 @@ export function folderTree(topic: TopicData): FolderTree {
       const parent = cut < 0 ? "" : key.slice(0, cut);
       const p = ensure(parent);
       const name = key.slice(cut + 1);
-      b = { key, parent, title: name, note: null, depth: p.depth + 1, count: 0 };
+      b = { key, parent, title: name, label: name, note: null, depth: p.depth + 1, count: 0 };
       branches.set(key, b);
     }
     return b;
@@ -218,103 +241,163 @@ export function folderTree(topic: TopicData): FolderTree {
   for (const key of folderOf.values()) {
     for (let b = branches.get(key); b; b = b.parent === null ? undefined : branches.get(b.parent)) b.count++;
   }
+  for (const b of branches.values()) b.label = shortLabel(b, branches);
   return { branches, folderOf };
 }
 
 /**
- * Notes of one topic, placed by their folder tree: the hub at the centre, each branch in its own
- * direction, and each note around its branch's star. Tree springs are strong and typed links weak,
- * so related notes lean together without leaving their folder. Seeded, so the same topic always
- * draws the same way; scaled into the nebula.
+ * Notes of one topic, placed as a radial tree of its folders (design doc 12 §3). Each folder gets
+ * a slice of the circle sized by the notes below it, and its children split that slice: so a
+ * folder's notes and sub-folders stay inside its slice and tree lines cannot cross. The tree faces
+ * the camera, and nesting is distance twice over: a folder sits one ring farther out than its parent
+ * and one tier farther back, straight along the view, so depth never moves a star on screen. A
+ * folder's own notes fan out just beyond its star, in rows when they are many.
+ * Typed links are drawn but do not move stars. Deterministic: the same topic always draws the same.
  */
 export function topicLayout(topic: TopicData, radius: number): StarPlacement {
   const r = rng(`n:${topic.slug}`);
   const { branches, folderOf } = folderTree(topic);
-  const total = Math.max(1, branches.get("")!.count);
   const anchor = (key: string) => branches.get(key)!.note ?? `branch:${key}`;
-  type N = SimNode & { note: boolean };
-  const nodes = new Map<string, N>();
-  const direction = (): [number, number, number] => {
-    const u = r() * 2 - 1;
-    const phi = r() * Math.PI * 2;
-    const s = Math.sqrt(1 - u * u);
-    return [s * Math.cos(phi), u * 0.6, s * Math.sin(phi)];
+  const children = new Map<string, string[]>();
+  for (const b of branches.values()) {
+    if (b.parent !== null) children.set(b.parent, [...(children.get(b.parent) ?? []), b.key]);
+  }
+  const own = new Map<string, string[]>(); // a folder's notes, without its folder note
+  for (const [id, key] of folderOf) {
+    if (id === branches.get(key)!.note) continue;
+    own.set(key, [...(own.get(key) ?? []), id]);
+  }
+  const weights = new Map<string, number>();
+  const weight = (key: string): number => {
+    let w = weights.get(key);
+    if (w === undefined) {
+      w = (own.get(key)?.length ?? 0) + (children.get(key) ?? []).reduce((s, k) => s + weight(k), 0);
+      w = Math.max(1, w);
+      weights.set(key, w);
+    }
+    return w;
   };
-  const reach = (b: Branch) => radius * (0.14 + 0.32 * Math.sqrt(b.count / total)) * Math.pow(0.8, b.depth - 1);
-  const spread = (b: Branch) => (b.key === "" ? radius * 0.45 : radius * (0.05 + 0.12 * Math.sqrt(b.count / total)));
+  const RING = 1; // distance between nesting levels
+  const TIER = 0.45; // how much farther from the camera each nesting level sits
+  const GAP = 0.3; // spacing between a folder's notes along an arc
+  const ROW = 0.32; // spacing between rows of notes
+  const at = (angle: number, rad: number, depth: number): [number, number, number] => {
+    const across = rad * Math.cos(angle);
+    const up = rad * Math.sin(angle);
+    const back = depth * TIER;
+    return [across - VIEW[0] * back, up * SCREEN_UP[1] - VIEW[1] * back, up * SCREEN_UP[2] - VIEW[2] * back];
+  };
+  const pos = new Map<string, [number, number, number]>();
+  const polar = new Map<string, [number, number, number]>(); // angle, ring radius, depth
+  const put = (id: string, angle: number, rad: number, depth: number) => {
+    polar.set(id, [angle, rad, depth]);
+    pos.set(id, at(angle, rad, depth));
+  };
+  const combed = new Set<string>(); // folders whose notes get elbows instead of straight lines
+  const placeNotes = (key: string, ids: string[], a0: number, a1: number, depth: number) => {
+    // A straight line from the star dips inside the folder's ring when its note sits too far
+    // round; the ring carries the folder's elbows, so such a folder's notes take elbows too.
+    const ring = (depth - 1) * RING;
+    if (ring > 0 && (a1 - a0) / 2 > 0.9 * Math.acos(ring / (ring + RING))) combed.add(key);
+    for (let i = 0, row = 0; i < ids.length; row++) {
+      const rad = depth * RING + row * ROW;
+      const take = Math.min(ids.length - i, Math.max(1, Math.floor(((a1 - a0) * rad) / GAP)));
+      for (let j = 0; j < take; j++) {
+        const angle = a0 + ((a1 - a0) * (j + 0.5 + (r() - 0.5) * 0.3)) / take;
+        put(ids[i + j], angle, rad + (r() - 0.5) * ROW * 0.3, depth);
+      }
+      i += take;
+    }
+  };
+  const place = (key: string, a0: number, a1: number) => {
+    const b = branches.get(key)!;
+    // The folder's notes go straight out from its star, its sub-folders to either side.
+    const subs = children.get(key) ?? [];
+    const half = Math.ceil(subs.length / 2);
+    const notes = own.get(key) ?? [];
+    const parts: { w: number; notes: boolean; go: (s: number, e: number) => void }[] = [
+      ...subs.slice(0, half).map((k) => ({ w: weight(k), notes: false, go: (s: number, e: number) => place(k, s, e) })),
+      ...(notes.length
+        ? [{ w: notes.length, notes: true, go: (s: number, e: number) => placeNotes(key, notes, s, e, b.depth + 1) }]
+        : []),
+      ...subs.slice(half).map((k) => ({ w: weight(k), notes: false, go: (s: number, e: number) => place(k, s, e) })),
+    ];
+    const total = parts.reduce((s, part) => s + part.w, 0);
+    let a = a0;
+    let star = (a0 + a1) / 2;
+    const spans = parts.map((part) => {
+      const span: [number, number] = [a, a + ((a1 - a0) * part.w) / total];
+      if (part.notes) star = (span[0] + span[1]) / 2; // the star faces its own notes
+      a = span[1];
+      return span;
+    });
+    if (key === "") {
+      polar.set(anchor(key), [star, 0, 0]);
+      pos.set(anchor(key), [0, 0, 0]);
+    } else put(anchor(key), star, b.depth * RING, b.depth);
+    parts.forEach((part, i) => part.go(...spans[i]));
+  };
+  const start = r() * Math.PI * 2;
+  place("", start, start + Math.PI * 2);
 
-  // Branches first, parents before children, each starting out along its own direction.
+  let max = 1e-6;
+  for (const p of pos.values()) max = Math.max(max, Math.hypot(...p));
+  const scale = (radius * 0.85) / max;
+  const pointOf = (id: string): [number, number, number] => {
+    const p = pos.get(id)!;
+    return [p[0] * scale, p[1] * scale, p[2] * scale];
+  };
+  const ids = [...folderOf.keys()].filter((id) => pos.has(id)).sort((a, b) => Number(b === topic.hub) - Number(a === topic.hub));
+  const positions = new Float32Array(ids.length * 3);
+  ids.forEach((id, i) => positions.set(pointOf(id), i * 3));
   const ordered = [...branches.values()].sort((a, b) => a.depth - b.depth || a.key.localeCompare(b.key));
-  const at = new Map<string, [number, number, number]>([["", [0, 0, 0]]]);
-  const topLevel = ordered.filter((b) => b.depth === 1).sort((a, b) => b.count - a.count || a.key.localeCompare(b.key));
-  topLevel.forEach((b, k) => {
-    const y = 1 - (2 * (k + 0.5)) / topLevel.length;
-    const ring = Math.sqrt(1 - y * y);
-    const a = k * GOLDEN;
-    at.set(b.key, [ring * Math.cos(a), y * 0.6, ring * Math.sin(a)]);
-  });
+  // Folder-to-folder lines are radial elbows: along the parent's own ring to the child's angle,
+  // then straight out. A folder's notes keep straight lines from its star, which leave the ring at
+  // once, so the two can only meet at the star; slices keep different folders apart.
+  const segments: number[] = [];
+  const shade: number[] = [];
+  const curve = (from: string, to: string) => {
+    const [a0, r0, d0] = polar.get(from)!;
+    const [a1, r1, d1] = polar.get(to)!;
+    const path: [number, number, number][] = [[a0, r0, d0]];
+    if (r0 > 0) {
+      // A shared angular grid, so siblings leaving one star along its ring draw the same arc.
+      const STEP = 0.08;
+      const dir = Math.sign(a1 - a0);
+      for (let g = Math.floor(a0 / STEP) + (dir > 0 ? 1 : 0); dir * (g * STEP - a1) < 0; g += dir) {
+        path.push([g * STEP, r0, d0]);
+      }
+      path.push([a1, r0, d0]);
+    }
+    path.push([a1, r1, d1]);
+    const points = path.map(([a, rad, d]) => at(r0 === 0 ? a1 : a, rad, d).map((v) => v * scale));
+    const lengths = points.slice(1).map((q, k) => Math.hypot(q[0] - points[k][0], q[1] - points[k][1], q[2] - points[k][2]));
+    const total = lengths.reduce((s, l) => s + l, 0) || 1;
+    let done = 0;
+    for (let k = 1; k < points.length; k++) {
+      segments.push(...points[k - 1], ...points[k]);
+      shade.push(1 - done / total, 1 - (done + lengths[k - 1]) / total);
+      done += lengths[k - 1];
+    }
+  };
   for (const b of ordered) {
-    if (b.key === "") {
-      const id = anchor("");
-      nodes.set(id, { id, note: b.note !== null, x: 0, y: 0, z: 0, fx: 0, fy: 0, fz: 0 });
+    if (b.key !== "") curve(anchor(b.parent!), anchor(b.key));
+  }
+  for (const [id, key] of folderOf) {
+    if (key === "" || id === branches.get(key)!.note) continue;
+    if (combed.has(key)) {
+      curve(anchor(key), id);
       continue;
     }
-    const parent = branches.get(b.parent!)!;
-    const base = nodes.get(anchor(parent.key))!;
-    const dir = b.depth === 1 ? at.get(b.key)! : direction();
-    const d = reach(b);
-    const id = anchor(b.key);
-    nodes.set(id, { id, note: b.note !== null, x: (base.x ?? 0) + dir[0] * d, y: (base.y ?? 0) + dir[1] * d, z: (base.z ?? 0) + dir[2] * d });
+    segments.push(...pointOf(anchor(key)), ...pointOf(id));
+    shade.push(1, 0);
   }
-  const tree: { source: string; target: string; distance: number; strength: number }[] = [];
-  for (const b of ordered) {
-    if (b.key !== "") tree.push({ source: anchor(b.key), target: anchor(b.parent!), distance: reach(b), strength: 0.9 });
-  }
-  for (const [id, key] of folderOf) {
-    if (nodes.has(id)) continue; // a folder note is its branch's point
-    const b = branches.get(key)!;
-    const base = nodes.get(anchor(key))!;
-    const dir = direction();
-    const d = spread(b) * (0.6 + 0.6 * r());
-    nodes.set(id, { id, note: true, x: (base.x ?? 0) + dir[0] * d, y: (base.y ?? 0) + dir[1] * d, z: (base.z ?? 0) + dir[2] * d });
-    tree.push({ source: id, target: anchor(key), distance: spread(b), strength: key === "" ? 0.08 : 0.7 });
-  }
-  const all = [...nodes.values()];
-  const typed = topic.links
-    .filter((l) => l.rel !== "links_to" && l.rel !== "part_of" && l.rel !== "has_part")
-    .filter((l) => nodes.has(l.source) && nodes.has(l.target) && l.source !== l.target)
-    .map((l) => ({ source: l.source, target: l.target, distance: radius * 0.3, strength: 0.04 }));
-  if (all.length > 1) {
-    const links = [...tree, ...typed];
-    const sim = forceSimulation(all, 3)
-      .force("charge", forceManyBody().strength(-radius * 0.3).distanceMax(radius * 0.8))
-      .force(
-        "link",
-        forceLink(links)
-          .id((d) => d.id)
-          .distance((l) => (l as (typeof links)[number]).distance)
-          .strength((l) => (l as (typeof links)[number]).strength),
-      )
-      .stop();
-    sim.tick(all.length <= 150 ? 220 : all.length <= 600 ? 150 : 90);
-  }
-  let max = 1e-6;
-  for (const node of all) max = Math.max(max, Math.hypot(node.x ?? 0, (node.y ?? 0) / 0.65, node.z ?? 0));
-  const scale = (radius * 0.85) / max;
-  const place = (node: N): [number, number, number] => [(node.x ?? 0) * scale, (node.y ?? 0) * scale * 0.65, (node.z ?? 0) * scale];
-  const ids = [...folderOf.keys()].filter((id) => nodes.has(id)).sort((a, b) => Number(b === topic.hub) - Number(a === topic.hub));
-  const positions = new Float32Array(ids.length * 3);
-  ids.forEach((id, i) => positions.set(place(nodes.get(id)!), i * 3));
-  const pointOf = (id: string) => place(nodes.get(id)!);
-  const segments: number[] = [];
-  for (const b of ordered) {
-    if (b.key !== "") segments.push(...pointOf(anchor(b.key)), ...pointOf(anchor(b.parent!)));
-  }
-  for (const [id, key] of folderOf) {
-    if (key !== "" && id !== branches.get(key)!.note) segments.push(...pointOf(id), ...pointOf(anchor(key)));
-  }
-  const placedBranches = ordered
-    .filter((b) => b.key !== "")
-    .map((b) => ({ ...b, position: pointOf(anchor(b.key)) }));
-  return { ids, positions, branches: placedBranches, skeleton: new Float32Array(segments) };
+  const placedBranches = ordered.filter((b) => b.key !== "").map((b) => ({ ...b, position: pointOf(anchor(b.key)) }));
+  return {
+    ids,
+    positions,
+    branches: placedBranches,
+    skeleton: new Float32Array(segments),
+    skeletonShade: new Float32Array(shade),
+  };
 }

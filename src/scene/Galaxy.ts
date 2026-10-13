@@ -9,7 +9,7 @@ import { RenderPass } from "three/addons/postprocessing/RenderPass.js";
 import { ShaderPass } from "three/addons/postprocessing/ShaderPass.js";
 import { UnrealBloomPass } from "three/addons/postprocessing/UnrealBloomPass.js";
 import type { Source } from "../api";
-import { galaxyLayout, topicLayout, type BranchPlacement, type GalaxyLayout, type Placed } from "../layout";
+import { TILT, VIEW, galaxyLayout, topicLayout, type BranchPlacement, type GalaxyLayout, type Placed } from "../layout";
 import { chooseRevealed, healthSeverity, levelOf, projectedRadius, type Focus, type ViewSample } from "../lod";
 import { FLAGS, type NodeData, type Rel, type RunSummary, type TopicData, type TopicSummary, type World } from "../types";
 import { gaussian, rng } from "../util/rand";
@@ -88,9 +88,7 @@ export type Quality = "high" | "low";
 /** What the user chose: a fixed quality, or let the map measure the GPU. */
 export type QualityMode = "auto" | Quality;
 
-/** Camera tilt from straight down, in radians. The view is a 2.5D map: fixed tilt and heading. */
-const TILT = 0.68;
-const VIEW_DIR = new THREE.Vector3(0, Math.cos(TILT), Math.sin(TILT));
+const VIEW_DIR = new THREE.Vector3(...VIEW);
 
 export interface GalaxyEvents {
   hover(t: Target | null, x: number, y: number): void;
@@ -716,7 +714,10 @@ export class Galaxy {
     // The folder tree (design doc 12 §3): each branch to its parent, each note to its branch.
     if (placement.skeleton.length) {
       const tree: number[] = [];
-      for (let k = 0; k < placement.skeleton.length / 6; k++) tree.push(tr * 0.5, tg * 0.5, tb * 0.5, tr * 0.8, tg * 0.8, tb * 0.8);
+      for (const t of placement.skeletonShade) {
+        const k = 0.5 + 0.3 * t; // brighter toward the parent
+        tree.push(tr * k, tg * k, tb * k);
+      }
       const st = FAMILY_STYLE.part_of;
       const trail = this.trail([...placement.skeleton], tree, "fam:part_of", st.width, st.opacity, false);
       for (const line of trail) {
@@ -1173,7 +1174,7 @@ export class Galaxy {
         cands.push({
           key: `b:${layer.slug}:${b.key}`,
           kind: "branch",
-          text: b.title,
+          text: b.label,
           sub: `${b.count}`,
           pos: new THREE.Vector3(b.position[0] + layer.center.x, b.position[1] + layer.center.y, b.position[2] + layer.center.z),
           priority: state >= 2 || hovered ? 12000 : 5200 + b.count * 8 - b.depth * 300,

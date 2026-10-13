@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { folderTree, galaxyLayout, topicLayout, topicRadius } from "./layout";
+import { VIEW, folderTree, galaxyLayout, topicLayout, topicRadius } from "./layout";
+
+/** Where a point lands on screen (the plane facing the camera), and how far it is from the camera. */
+const screen = (q: ArrayLike<number>) => [q[0], q[1] * VIEW[2] - q[2] * VIEW[1]];
+const toward = (q: ArrayLike<number>) => q[0] * VIEW[0] + q[1] * VIEW[1] + q[2] * VIEW[2];
 import { chooseRevealed, focusToHash, hashToFocus, healthSeverity, levelOf, parentFocus, projectedRadius, viewFocus } from "./lod";
 import type { Constellation, TopicData, TopicSummary } from "./types";
 
@@ -123,9 +127,81 @@ describe("folder tree", () => {
     expect(dist(at("r1"), at("rfcs"))).toBeLessThan(dist(at("r1"), at("index")));
     expect(dist(at("r2"), at("rfcs"))).toBeLessThan(dist(at("r2"), at("d1")));
     // 3 branches to their parents, plus r1, r2, o1, d1 to their branch; nothing for root notes.
-    expect(p.skeleton.length).toBe(7 * 6);
+    // A line may take several segments; each starts at its parent end, where the shade is 1.
+    const starts = Array.from(p.skeletonShade).filter((s, i) => i % 2 === 0 && s === 1);
+    expect(starts.length).toBe(7);
     expect(p.branches.map((b) => b.key)).toEqual(["docs", "rfcs", "rfcs/old"]);
     expect(Array.from(topicLayout(data, r).positions)).toEqual(Array.from(p.positions));
+  });
+
+  it("puts deeper folders farther out and farther from the camera", () => {
+    const p = topicLayout(data, topicRadius(7));
+    const at = (key: string) => p.branches.find((b) => b.key === key)!.position;
+    const out = (q: number[]) => Math.hypot(...screen(q));
+    expect(out(at("rfcs/old"))).toBeGreaterThan(out(at("rfcs")));
+    expect(toward(at("rfcs/old"))).toBeLessThan(toward(at("rfcs")));
+    expect(toward(at("rfcs"))).toBeLessThan(0);
+  });
+
+  it("draws a deep, lopsided tree without crossing lines", () => {
+    const rels = ["index"];
+    for (let i = 0; i < 30; i++) rels.push(`big/n${i}`);
+    for (const sub of ["a", "b", "c"]) {
+      rels.push(`big/${sub}/${sub}`);
+      for (let i = 0; i < 12; i++) rels.push(`big/${sub}/m${sub}${i}`);
+      for (let i = 0; i < 4; i++) rels.push(`big/${sub}/deep/d${sub}${i}`);
+    }
+    rels.push("small/s1", "small/s2", "tiny/t1");
+    const deep: TopicData = {
+      ...data,
+      slug: "deep",
+      nodes: rels.map((rel) => ({ ...data.nodes[1], id: rel, title: rel, path: `topics/x/${rel}.md`, kind: rel === "index" ? "hub" : "note" })),
+    };
+    const p = topicLayout(deep, topicRadius(rels.length));
+    const s = p.skeleton;
+    const segs: number[][][] = [];
+    for (let k = 0; k < s.length / 6; k++) segs.push([screen(s.slice(k * 6, k * 6 + 3)), screen(s.slice(k * 6 + 3, k * 6 + 6))]);
+    const ccw = (a: number[], b: number[], c: number[]) => (c[1] - a[1]) * (b[0] - a[0]) > (b[1] - a[1]) * (c[0] - a[0]);
+    const same = (u: number[], w: number[]) => Math.abs(u[0] - w[0]) < 1e-6 && Math.abs(u[1] - w[1]) < 1e-6;
+    let crossings = 0;
+    for (let i = 0; i < segs.length; i++) {
+      for (let j = i + 1; j < segs.length; j++) {
+        const [a, b] = segs[i];
+        const [c, d] = segs[j];
+        if ([a, b].some((u) => [c, d].some((w) => same(u, w)))) continue;
+        if (ccw(a, c, d) !== ccw(b, c, d) && ccw(a, b, c) !== ccw(a, b, d)) crossings++;
+      }
+    }
+    expect(crossings).toBe(0);
+  });
+});
+
+describe("branch labels", () => {
+  it("drop what the parent folders' titles already say", () => {
+    const rels = ["index", "s/s", "s/a/a", "s/a/t/t"];
+    const titles: Record<string, string> = {
+      "s/s": "Lumen guide",
+      "s/a/a": "Lumen guide · Sync",
+      "s/a/t/t": "Lumen guide · Sync · Conflicts",
+    };
+    const tree: TopicData = {
+      slug: "l",
+      title: "L",
+      color: "#888888",
+      hub: "index",
+      path: "topics/l",
+      nodes: rels.map((rel) => ({
+        id: rel, title: titles[rel] ?? rel, path: `topics/l/${rel}.md`, kind: rel === "index" ? "hub" : "note",
+        topic: "l", type: null, status: "active", updated: null, aliases: [], degree: 1,
+        claims: 0, superseded_claims: 0, unverified_claims: 0, flags: [],
+      })),
+      links: [],
+      external: [],
+    };
+    const { branches } = folderTree(tree);
+    expect(branches.get("s/a")!.label).toBe("Authoring");
+    expect(branches.get("s/a/t")!.label).toBe("Tools");
+    expect(branches.get("s/a/t")!.title).toBe("Lumen guide · Sync · Conflicts");
   });
 });
 
