@@ -76,6 +76,8 @@ export interface NodeData {
   updated: string | null;
   aliases: string[];
   degree: number;
+  /** How long the note is, in lines: what its size on the map shows. */
+  lines: number;
   claims: number;
   superseded_claims: number;
   unverified_claims: number;

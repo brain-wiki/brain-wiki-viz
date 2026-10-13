@@ -23,7 +23,7 @@ const work: TopicData = {
   path: "topics/work",
   nodes: paths.map((rel) => ({
     id: rel.split("/").pop()!, title: rel, path: `topics/work/${rel}.md`, kind: rel === "index" ? "hub" : "note",
-    topic: "work", type: null, status: "active", updated: null, aliases: [], degree: 1,
+    topic: "work", type: null, status: "active", updated: null, aliases: [], degree: 1, lines: 20,
     claims: 0, superseded_claims: 0, unverified_claims: 0, flags: [],
   })),
   links: [],

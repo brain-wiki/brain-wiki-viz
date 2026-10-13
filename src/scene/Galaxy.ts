@@ -9,7 +9,7 @@ import { RenderPass } from "three/addons/postprocessing/RenderPass.js";
 import { ShaderPass } from "three/addons/postprocessing/ShaderPass.js";
 import { UnrealBloomPass } from "three/addons/postprocessing/UnrealBloomPass.js";
 import type { Source } from "../api";
-import { TILT, VIEW, galaxyLayout, topicLayout, type BranchPlacement, type GalaxyLayout, type Placed } from "../layout";
+import { TILT, VIEW, galaxyLayout, noteWeight, topicLayout, type BranchPlacement, type GalaxyLayout, type Placed } from "../layout";
 import { chooseRevealed, healthSeverity, levelOf, projectedRadius, type Focus, type ViewSample } from "../lod";
 import { FLAGS, type NodeData, type Rel, type RunSummary, type TopicData, type TopicSummary, type World } from "../types";
 import { gaussian, rng } from "../util/rand";
@@ -650,16 +650,14 @@ export class Galaxy {
     const states = new Float32Array(count);
     const world = new Float32Array(count * 3);
     const [tr, tg, tb] = rgb(data.color);
-    const branchSize = new Map(placement.branches.filter((b) => b.note).map((b) => [b.note!, b.count]));
     nodes.forEach((nd, i) => {
       const hub = nd.id === data.hub;
       const ghost = nd.status === "superseded" || nd.status === "archived";
       const mix = hub ? 0.25 : 0.55;
       colors.set([tr * (1 - mix) + mix, tg * (1 - mix) + mix, tb * (1 - mix) + mix], i * 3);
       if (ghost) colors.set([0.55, 0.58, 0.66], i * 3);
-      sizes[i] = hub ? 8 : Math.min(6.5, 1.8 + 1.1 * Math.sqrt(nd.degree));
-      const members = branchSize.get(nd.id);
-      if (members) sizes[i] = Math.max(sizes[i], Math.min(7, 3 + 0.5 * Math.sqrt(members))); // a branch's star
+      // Size shows how much a note holds (the fourth root of its lines, as its room in the layout).
+      sizes[i] = hub ? 8 : Math.min(7.2, Math.max(2.2, 1.2 + 0.8 * Math.sqrt(noteWeight(nd.lines ?? 0))));
       alphas[i] = (ghost ? 0.32 : 1) * recency(nd.updated, this.now);
       const first = FLAGS.findIndex((f) => nd.flags.includes(f));
       flags[i] = first < 0 ? 0 : first + 1;

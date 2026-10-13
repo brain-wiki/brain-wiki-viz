@@ -68,21 +68,20 @@ describe("topic layout", () => {
     hub: "h",
     nodes: ["h", "a", "b", "c", "d"].map((id) => ({
       id, title: id, path: `${id}.md`, kind: id === "h" ? "hub" : "note", topic: "t0", type: null,
-      status: "active", updated: null, aliases: [], degree: 1, claims: 0,
+      status: "active", updated: null, aliases: [], degree: 1, lines: 20, claims: 0,
       superseded_claims: 0, unverified_claims: 0, flags: [],
     })),
     links: [{ source: "a", target: "b", rel: "depends_on" }],
     external: [],
   };
 
-  it("pins the hub at the centre and fits notes in the nebula", () => {
+  it("fits every note in the nebula, puts the index first, and packs the same way every time", () => {
     const r = topicRadius(5);
     const p = topicLayout(data, r);
     expect(p.ids[0]).toBe("h");
-    expect([p.positions[0], p.positions[1], p.positions[2]]).toEqual([0, 0, 0]);
-    for (let i = 1; i < p.ids.length; i++) {
+    for (let i = 0; i < p.ids.length; i++) {
       const d = Math.hypot(p.positions[i * 3], p.positions[i * 3 + 1], p.positions[i * 3 + 2]);
-      expect(d).toBeLessThanOrEqual(r * 0.86);
+      expect(d).toBeLessThanOrEqual(r * 0.9);
     }
     expect(Array.from(topicLayout(data, r).positions)).toEqual(Array.from(p.positions));
   });
@@ -98,7 +97,7 @@ describe("folder tree", () => {
     path: "topics/x",
     nodes: paths.map((rel) => ({
       id: rel.split("/").pop()!, title: `T ${rel}`, path: `topics/x/${rel}.md`, kind: rel === "index" ? "hub" : "note",
-      topic: "x", type: null, status: "active", updated: null, aliases: [], degree: 1,
+      topic: "x", type: null, status: "active", updated: null, aliases: [], degree: 1, lines: 20,
       claims: 0, superseded_claims: 0, unverified_claims: 0, flags: [],
     })),
     links: [],
@@ -115,64 +114,64 @@ describe("folder tree", () => {
     expect(folderOf.get("a")).toBe("");
   });
 
-  it("clusters each branch around its star and draws the tree only below the topic", () => {
+  it("packs each folder's notes and sub-folders inside its circle, and draws one circle per folder", () => {
     const r = topicRadius(7);
     const p = topicLayout(data, r);
     const at = (id: string) => {
       const i = p.ids.indexOf(id);
-      return [p.positions[i * 3], p.positions[i * 3 + 1], p.positions[i * 3 + 2]];
+      return screen([p.positions[i * 3], p.positions[i * 3 + 1], p.positions[i * 3 + 2]]);
     };
-    const dist = (a: number[], b: number[]) => Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]);
+    const circle = (key: string) => p.branches.find((b) => b.key === key)!;
+    const inside = (q: number[], key: string) => {
+      const c = circle(key);
+      const [cx, cy] = screen(c.center);
+      return Math.hypot(q[0] - cx, q[1] - cy) <= c.radius * 1.001;
+    };
     expect(p.ids[0]).toBe("index");
-    expect(dist(at("r1"), at("rfcs"))).toBeLessThan(dist(at("r1"), at("index")));
-    expect(dist(at("r2"), at("rfcs"))).toBeLessThan(dist(at("r2"), at("d1")));
-    // 3 branches to their parents, plus r1, r2, o1, d1 to their branch; nothing for root notes.
-    // A line may take several segments; each starts at its parent end, where the shade is 1.
-    const starts = Array.from(p.skeletonShade).filter((s, i) => i % 2 === 0 && s === 1);
-    expect(starts.length).toBe(7);
+    for (const id of ["rfcs", "r1", "r2", "o1"]) expect(inside(at(id), "rfcs")).toBe(true);
+    expect(inside(at("o1"), "rfcs/old")).toBe(true);
+    expect(inside(at("d1"), "docs")).toBe(true);
+    expect(inside(at("d1"), "rfcs")).toBe(false);
+    expect(p.skeleton.length).toBe(3 * 48 * 6); // docs, rfcs, rfcs/old; notes draw no lines
     expect(p.branches.map((b) => b.key)).toEqual(["docs", "rfcs", "rfcs/old"]);
     expect(Array.from(topicLayout(data, r).positions)).toEqual(Array.from(p.positions));
   });
 
-  it("puts deeper folders farther out and farther from the camera", () => {
+  it("puts deeper folders farther from the camera", () => {
     const p = topicLayout(data, topicRadius(7));
-    const at = (key: string) => p.branches.find((b) => b.key === key)!.position;
-    const out = (q: number[]) => Math.hypot(...screen(q));
-    expect(out(at("rfcs/old"))).toBeGreaterThan(out(at("rfcs")));
+    const at = (key: string) => p.branches.find((b) => b.key === key)!.center;
     expect(toward(at("rfcs/old"))).toBeLessThan(toward(at("rfcs")));
     expect(toward(at("rfcs"))).toBeLessThan(0);
   });
 
-  it("draws a deep, lopsided tree without crossing lines", () => {
+  it("gives longer notes more room, and keeps sibling folders apart", () => {
     const rels = ["index"];
-    for (let i = 0; i < 30; i++) rels.push(`big/n${i}`);
-    for (const sub of ["a", "b", "c"]) {
-      rels.push(`big/${sub}/${sub}`);
-      for (let i = 0; i < 12; i++) rels.push(`big/${sub}/m${sub}${i}`);
-      for (let i = 0; i < 4; i++) rels.push(`big/${sub}/deep/d${sub}${i}`);
-    }
-    rels.push("small/s1", "small/s2", "tiny/t1");
-    const deep: TopicData = {
+    for (let i = 0; i < 4; i++) rels.push(`long/l${i}`, `short/s${i}`);
+    for (let i = 0; i < 40; i++) rels.push(`big/n${i}`);
+    const sized: TopicData = {
       ...data,
-      slug: "deep",
-      nodes: rels.map((rel) => ({ ...data.nodes[1], id: rel, title: rel, path: `topics/x/${rel}.md`, kind: rel === "index" ? "hub" : "note" })),
+      slug: "sized",
+      nodes: rels.map((rel) => ({
+        ...data.nodes[1],
+        id: rel,
+        title: rel,
+        path: `topics/x/${rel}.md`,
+        kind: rel === "index" ? "hub" : "note",
+        lines: rel.startsWith("long/") ? 2000 : 20,
+      })),
     };
-    const p = topicLayout(deep, topicRadius(rels.length));
-    const s = p.skeleton;
-    const segs: number[][][] = [];
-    for (let k = 0; k < s.length / 6; k++) segs.push([screen(s.slice(k * 6, k * 6 + 3)), screen(s.slice(k * 6 + 3, k * 6 + 6))]);
-    const ccw = (a: number[], b: number[], c: number[]) => (c[1] - a[1]) * (b[0] - a[0]) > (b[1] - a[1]) * (c[0] - a[0]);
-    const same = (u: number[], w: number[]) => Math.abs(u[0] - w[0]) < 1e-6 && Math.abs(u[1] - w[1]) < 1e-6;
-    let crossings = 0;
-    for (let i = 0; i < segs.length; i++) {
-      for (let j = i + 1; j < segs.length; j++) {
-        const [a, b] = segs[i];
-        const [c, d] = segs[j];
-        if ([a, b].some((u) => [c, d].some((w) => same(u, w)))) continue;
-        if (ccw(a, c, d) !== ccw(b, c, d) && ccw(a, b, c) !== ccw(a, b, d)) crossings++;
+    const p = topicLayout(sized, topicRadius(rels.length));
+    const circle = (key: string) => p.branches.find((b) => b.key === key)!;
+    expect(circle("long").radius).toBeGreaterThan(circle("short").radius * 1.8);
+    const keys = ["long", "short", "big"];
+    for (const a of keys) {
+      for (const b of keys) {
+        if (a >= b) continue;
+        const [ax, ay] = screen(circle(a).center);
+        const [bx, by] = screen(circle(b).center);
+        expect(Math.hypot(ax - bx, ay - by)).toBeGreaterThanOrEqual(circle(a).radius + circle(b).radius);
       }
     }
-    expect(crossings).toBe(0);
   });
 });
 
@@ -192,7 +191,7 @@ describe("branch labels", () => {
       path: "topics/l",
       nodes: rels.map((rel) => ({
         id: rel, title: titles[rel] ?? rel, path: `topics/l/${rel}.md`, kind: rel === "index" ? "hub" : "note",
-        topic: "l", type: null, status: "active", updated: null, aliases: [], degree: 1,
+        topic: "l", type: null, status: "active", updated: null, aliases: [], degree: 1, lines: 20,
         claims: 0, superseded_claims: 0, unverified_claims: 0, flags: [],
       })),
       links: [],

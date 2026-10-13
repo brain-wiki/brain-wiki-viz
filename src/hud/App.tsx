@@ -528,8 +528,9 @@ function Help({ c }: { c: Controller }) {
         <section class="help-section help-wide">
           <h4>Reading the map</h4>
           <p class="help-list">
-            Star size: how connected a note is · brightness: how recently it changed · a ring: it has
-            issues · pulses flow prerequisite → dependent (blue) and old → new (amber)
+            A circle is a folder, holding its notes and sub-folders · star size: how much a note
+            holds · brightness: how recently it changed · a ring: it has issues · pulses flow
+            prerequisite → dependent (blue) and old → new (amber)
           </p>
         </section>
       </div>
