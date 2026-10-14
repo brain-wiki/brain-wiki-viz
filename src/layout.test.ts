@@ -114,16 +114,16 @@ describe("folder tree", () => {
     expect(folderOf.get("a")).toBe("");
   });
 
-  it("packs each folder's notes and sub-folders inside its circle, with one circle and one link per folder", () => {
+  it("keeps each folder's notes and sub-folders within its reach, and draws one link per folder and no outlines", () => {
     const r = topicRadius(7);
     const p = topicLayout(data, r);
     const at = (id: string) => {
       const i = p.ids.indexOf(id);
       return screen([p.positions[i * 3], p.positions[i * 3 + 1], p.positions[i * 3 + 2]]);
     };
-    const circle = (key: string) => p.branches.find((b) => b.key === key)!;
+    const folder = (key: string) => p.branches.find((b) => b.key === key)!;
     const inside = (q: number[], key: string) => {
-      const c = circle(key);
+      const c = folder(key);
       const [cx, cy] = screen(c.center);
       return Math.hypot(q[0] - cx, q[1] - cy) <= c.radius * 1.001;
     };
@@ -132,7 +132,7 @@ describe("folder tree", () => {
     expect(inside(at("o1"), "rfcs/old")).toBe(true);
     expect(inside(at("d1"), "docs")).toBe(true);
     expect(inside(at("d1"), "rfcs")).toBe(false);
-    expect(p.skeleton.length).toBe(3 * 48 * 6 + 3 * 6); // docs, rfcs, rfcs/old; notes draw no lines
+    expect(p.skeleton.length).toBe(3 * 6); // docs, rfcs, rfcs/old; notes draw no lines
     expect(p.branches.map((b) => b.key)).toEqual(["docs", "rfcs", "rfcs/old"]);
     expect(Array.from(topicLayout(data, r).positions)).toEqual(Array.from(p.positions));
   });
@@ -141,7 +141,7 @@ describe("folder tree", () => {
     const p = topicLayout(data, topicRadius(7));
     const star = (id: string) => Array.from(p.positions.slice(p.ids.indexOf(id) * 3, p.ids.indexOf(id) * 3 + 3));
     const links: number[][] = [];
-    for (let s = 3 * 48 * 6; s < p.skeleton.length; s += 6) links.push(Array.from(p.skeleton.slice(s, s + 6)));
+    for (let s = 0; s < p.skeleton.length; s += 6) links.push(Array.from(p.skeleton.slice(s, s + 6)));
     const linked = (a: number[], b: number[]) => links.some((l) => l.every((v, i) => Math.abs(v - [...a, ...b][i]) < 1e-3));
     expect(linked(star("index"), star("rfcs"))).toBe(true);
     expect(linked(star("index"), star("d1"))).toBe(true); // docs has no folder note: its one note is its core
@@ -150,7 +150,7 @@ describe("folder tree", () => {
     expect(toward(star("o1"))).toBeCloseTo(toward(old.center), 3);
   });
 
-  it("never runs a link through the circle of a folder it does not join", () => {
+  it("never runs a link through the reach of a folder it does not join", () => {
     const rels = ["index", "root-note"];
     for (let a = 0; a < 5; a++) {
       rels.push(`a${a}/a${a}`);
@@ -175,7 +175,7 @@ describe("folder tree", () => {
     const p = topicLayout(deep, topicRadius(rels.length));
     const { branches } = folderTree(deep);
     const line = (b: number) => [screen(p.skeleton.slice(b, b + 3)), screen(p.skeleton.slice(b + 3, b + 6))];
-    const first = p.skeleton.length - p.branches.length * 6;
+    const first = 0;
     p.branches.forEach((b, i) => {
       const [a, c] = line(first + i * 6);
       const joins = new Set([b.key]);
@@ -188,6 +188,21 @@ describe("folder tree", () => {
         expect(Math.hypot(a[0] + t * dx - ox, a[1] + t * dy - oy), `${b.key} through ${o.key}`).toBeGreaterThan(o.radius);
       }
     });
+  });
+
+  it("gathers a folder dense at its core and sparse at its rim, not evenly", () => {
+    const rels = ["index", ...Array.from({ length: 80 }, (_, i) => `n${i}`)];
+    const flat: TopicData = {
+      ...data,
+      slug: "flat",
+      nodes: rels.map((rel) => ({ ...data.nodes[1], id: rel, title: rel, path: `topics/x/${rel}.md`, kind: rel === "index" ? "hub" : "note", lines: 30 })),
+    };
+    const p = topicLayout(flat, topicRadius(rels.length));
+    const ds = p.ids.map((_, i) => Math.hypot(...screen(p.positions.slice(i * 3, i * 3 + 3))));
+    const reach = Math.max(...ds);
+    const inner = ds.filter((d) => d <= reach / 2).length / (reach / 2) ** 2;
+    const outer = ds.filter((d) => d > reach / 2).length / (reach ** 2 - (reach / 2) ** 2);
+    expect(inner).toBeGreaterThan(outer * 3);
   });
 
   it("gathers a folder's long notes at its core, around the folder note", () => {
@@ -240,15 +255,15 @@ describe("folder tree", () => {
       })),
     };
     const p = topicLayout(sized, topicRadius(rels.length));
-    const circle = (key: string) => p.branches.find((b) => b.key === key)!;
-    expect(circle("long").radius).toBeGreaterThan(circle("short").radius * 1.8);
+    const folder = (key: string) => p.branches.find((b) => b.key === key)!;
+    expect(folder("long").radius).toBeGreaterThan(folder("short").radius * 1.8);
     const keys = ["long", "short", "big"];
     for (const a of keys) {
       for (const b of keys) {
         if (a >= b) continue;
-        const [ax, ay] = screen(circle(a).center);
-        const [bx, by] = screen(circle(b).center);
-        expect(Math.hypot(ax - bx, ay - by)).toBeGreaterThanOrEqual(circle(a).radius + circle(b).radius);
+        const [ax, ay] = screen(folder(a).center);
+        const [bx, by] = screen(folder(b).center);
+        expect(Math.hypot(ax - bx, ay - by)).toBeGreaterThanOrEqual(folder(a).radius + folder(b).radius);
       }
     }
   });

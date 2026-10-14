@@ -705,7 +705,7 @@ export class Galaxy {
       }
       lines.set(family, trail);
     }
-    // The folder tree (design doc 12 §3): each folder's circle, and a link to its parent folder.
+    // The folder tree (design doc 12 §3): a link from each folder's core to its parent's.
     if (placement.skeleton.length) {
       const tree: number[] = [];
       for (const t of placement.skeletonShade) {
