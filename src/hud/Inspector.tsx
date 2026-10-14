@@ -138,6 +138,7 @@ function ConstellationCard({ c, id }: { c: Controller; id: string }) {
 
 function TopicCard({ c, slug }: { c: Controller; slug: string }) {
   const data = useStore(c.store, (s) => s.topicData);
+  const topicError = useStore(c.store, (s) => s.topicError);
   const t = c.world.topics.find((x) => x.slug === slug);
   const flows = useMemo(
     () => c.world.flows.filter((f) => f.a === slug || f.b === slug).sort((a, b) => b.total - a.total).slice(0, 6),
@@ -207,7 +208,7 @@ function TopicCard({ c, slug }: { c: Controller; slug: string }) {
           </div>
         </>
       )}
-      {!ready && <div class="empty small">Loading…</div>}
+      {!ready && <div class="empty small">{topicError ?? "Loading…"}</div>}
       {ready && ready.nodes.length > 5 && (
         <>
           <div class="section-title">Most connected</div>
@@ -238,6 +239,7 @@ function TopicCard({ c, slug }: { c: Controller; slug: string }) {
 
 function NoteCard({ c, id, slug }: { c: Controller; id: string; slug: string }) {
   const note = useStore(c.store, (s) => s.note);
+  const noteError = useStore(c.store, (s) => s.noteError);
   const data = useStore(c.store, (s) => s.topicData);
   const [copied, setCopied] = useState(false);
   const t = c.world.topics.find((x) => x.slug === slug);
@@ -288,8 +290,8 @@ function NoteCard({ c, id, slug }: { c: Controller; id: string; slug: string }) 
         <div key={b} class={`banner${/conflict/i.test(b) ? " banner-red" : ""}`}>{b}</div>
       ))}
       {note?.summary && <p class="insp-desc">{plainLinks(note.summary)}</p>}
-      {!note && <div class="empty small">Reading the note…</div>}
-      {note?.partial && <div class="hint">This exported file has no claim text.</div>}
+      {!note && <div class="empty small">{noteError ?? "Reading the note…"}</div>}
+      {note?.partial && <div class="hint">This exported file has no fact text.</div>}
       {(note?.claims?.length ?? 0) > 0 && (
         <>
           <div class="section-title">Facts <span class="section-count">{note!.claims!.length}</span></div>

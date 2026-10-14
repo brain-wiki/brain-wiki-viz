@@ -14,6 +14,9 @@ export interface AppState {
   hover: { target: Target; x: number; y: number } | null;
   note: NoteDetail | null;
   topicData: TopicData | null;
+  /** Why the focused note or topic could not be shown; null while it loads or once it has. */
+  noteError: string | null;
+  topicError: string | null;
   layers: Layers;
   health: boolean;
   labels: boolean;
@@ -44,6 +47,7 @@ export class Controller {
   readonly store: Store<AppState>;
   galaxy: Galaxy | null = null;
   private toastTimer = 0;
+  private unreachableAt = 0;
   private noteSeq = 0;
   private constellationOf: Map<string, string>;
   private trail: Trail;
@@ -64,6 +68,8 @@ export class Controller {
       hover: null,
       note: null,
       topicData: null,
+      noteError: null,
+      topicError: null,
       // Part of (spokes to the hub) repeats what clustering already shows; wikilinks are noisy.
       layers: Object.fromEntries(FAMILIES.map((f) => [f, f !== "links_to"])) as Layers,
       health: false,
@@ -95,6 +101,12 @@ export class Controller {
         quality: (quality, auto) => {
           this.store.set({ quality });
           if (auto && quality === "low") this.toast("Graphics set to Low: frames were slow on this GPU, so the glow is off. Change it in the ⋯ menu.");
+        },
+        unreachable: () => {
+          const now = Date.now();
+          if (now - this.unreachableAt < 30_000) return;
+          this.unreachableAt = now;
+          this.toast("Lost the connection to brain viz. Is it still running?");
         },
       }, this.store.state.qualityMode);
       this.galaxy.setLayers(this.store.state.layers);
@@ -185,22 +197,34 @@ export class Controller {
       this.syncTrail();
     }
     if (f.topic && f.topic !== prev.topic) {
-      this.store.set({ topicData: null });
-      void this.source.topic(f.topic).then((data) => {
-        if (this.store.state.focus.topic === f.topic) this.store.set({ topicData: data });
-      });
+      this.store.set({ topicData: null, topicError: null });
+      void this.source.topic(f.topic).then(
+        (data) => {
+          if (this.store.state.focus.topic !== f.topic) return;
+          this.store.set(data ? { topicData: data } : { topicError: "This topic is no longer in the brain." });
+        },
+        (err: unknown) => {
+          if (this.store.state.focus.topic === f.topic) this.store.set({ topicError: loadError(err) });
+        },
+      );
     } else if (!f.topic) {
-      this.store.set({ topicData: null });
+      this.store.set({ topicData: null, topicError: null });
     }
     if (f.note) {
       const seq = ++this.noteSeq;
-      if (f.note !== prev.note) this.store.set({ note: null });
-      void this.source.note(f.note).then((note) => {
-        if (seq === this.noteSeq) this.store.set({ note });
-        if (note && this.trail.setTitle(focusToHash(f), note.title)) this.syncTrail();
-      });
+      if (f.note !== prev.note) this.store.set({ note: null, noteError: null });
+      void this.source.note(f.note).then(
+        (note) => {
+          if (seq !== this.noteSeq) return;
+          this.store.set(note ? { note } : { noteError: "This note is no longer in the brain." });
+          if (note && this.trail.setTitle(focusToHash(f), note.title)) this.syncTrail();
+        },
+        (err: unknown) => {
+          if (seq === this.noteSeq) this.store.set({ noteError: loadError(err) });
+        },
+      );
     } else {
-      this.store.set({ note: null, previewOpen: false });
+      this.store.set({ note: null, noteError: null, previewOpen: false });
     }
   }
 
@@ -270,7 +294,7 @@ export class Controller {
       const f = this.store.state.focus;
       if (t.level === "constellation") this.focus({ constellation: f.constellation === t.b ? t.a : t.b });
       else this.focus({ topic: f.topic === t.b ? t.a : t.b });
-    } else this.toast(`${this.world.episodes.count} episodes wait in the inbox. Ask your agent to consolidate them, or run brain consolidate.`);
+    } else this.toast(`${this.world.episodes.count} session captures wait in the inbox. Ask your agent to consolidate them.`);
   }
 
   /** Scrolling moves between levels like zooming a map: in enters, out leaves, panning switches. */
@@ -368,4 +392,11 @@ function savedGraphics(): QualityMode | null {
   } catch {
     return null;
   }
+}
+
+/** What to tell the user when a note or topic could not be fetched. */
+function loadError(err: unknown): string {
+  // fetch rejects with a TypeError when the server cannot be reached at all.
+  if (err instanceof TypeError) return "Could not reach brain viz. Is it still running?";
+  return `Could not load it (${err instanceof Error ? err.message : String(err)}).`;
 }

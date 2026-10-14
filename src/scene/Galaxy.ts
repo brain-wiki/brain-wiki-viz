@@ -99,6 +99,8 @@ export interface GalaxyEvents {
   /** Each level-of-detail tick: what the camera is looking at, and whether the user moved it. */
   view(sample: ViewSample, userDriven: boolean): void;
   quality(q: Quality, auto: boolean): void;
+  /** A topic could not be fetched: the server is down or failing. */
+  unreachable(): void;
 }
 
 interface TopicLayer {
@@ -228,6 +230,8 @@ export class Galaxy {
   private focusLines = new THREE.Group();
   private revealed = new Map<string, TopicLayer>();
   private pending = new Map<string, Promise<void>>();
+  /** Topics whose last fetch failed, and when to try again (backing off to a minute). */
+  private failed = new Map<string, { until: number; wait: number }>();
   private topicPx = new Map<string, number>();
   private focus: Focus = {};
   private neighborhood = new Map<string, number>();
@@ -606,6 +610,7 @@ export class Galaxy {
   /** Load and show a topic's stars; concurrent callers share the one in-flight load. */
   private reveal(slug: string): Promise<void> {
     if (this.revealed.has(slug)) return Promise.resolve();
+    if ((this.failed.get(slug)?.until ?? 0) > performance.now()) return Promise.resolve();
     let loading = this.pending.get(slug);
     if (!loading) {
       loading = this.load(slug).finally(() => this.pending.delete(slug));
@@ -615,7 +620,16 @@ export class Galaxy {
   }
 
   private async load(slug: string): Promise<void> {
-    const data = await this.source.topic(slug);
+    let data: TopicData | null;
+    try {
+      data = await this.source.topic(slug);
+    } catch {
+      const wait = Math.min(60_000, (this.failed.get(slug)?.wait ?? 1_000) * 2);
+      this.failed.set(slug, { until: performance.now() + wait, wait });
+      this.events.unreachable();
+      return;
+    }
+    this.failed.delete(slug);
     if (!data || this.disposed) return;
     const p = this.layout.topics.get(slug);
     if (!p) return;
@@ -1144,7 +1158,7 @@ export class Galaxy {
     const inbox = this.layout.inbox;
     const inboxPx = projectedRadius(inbox.r, cam.distanceTo(new THREE.Vector3(inbox.x, inbox.y, inbox.z)), h, this.camera.fov);
     if (inboxPx > 6) {
-      cands.push({ key: "inbox", kind: "inbox", text: "Inbox", sub: `${this.world.episodes.count} pending`, color: "#ffd88a", pos: new THREE.Vector3(inbox.x, inbox.y, inbox.z), priority: 7000, lift: Math.min(inboxPx, 60) * 0.6 });
+      cands.push({ key: "inbox", kind: "inbox", text: "Inbox", sub: count(this.world.episodes.count, "session capture"), color: "#ffd88a", pos: new THREE.Vector3(inbox.x, inbox.y, inbox.z), priority: 7000, lift: Math.min(inboxPx, 60) * 0.6 });
     }
     if (this.world.constellations.length > 1) {
       for (const c of this.world.constellations) {
@@ -1169,7 +1183,7 @@ export class Galaxy {
         key: `t:${t.slug}`,
         kind: "topic",
         text: t.title,
-        sub: changed ? `${changed} changed` : t.flagged ? `${t.notes} · ${t.flagged}⚑` : `${t.notes}`,
+        sub: changed ? `${changed} changed` : t.flagged ? `${count(t.notes, "note")} · ${t.flagged} with issues` : count(t.notes, "note"),
         color: t.color,
         pos: new THREE.Vector3(p.x, p.y, p.z),
         priority: (focused ? 9000 : 3000) + px * 2 + (inFocusC ? 400 : 0) + (this.health && t.flagged ? 600 : 0) + (changed ? 5000 : 0) + (this.hoverTopics.has(t.slug) ? 6000 : 0),
@@ -1188,7 +1202,7 @@ export class Galaxy {
           key: `b:${layer.slug}:${b.key}`,
           kind: "branch",
           text: b.label,
-          sub: `${b.count}`,
+          sub: count(b.count, "note"),
           pos: new THREE.Vector3(b.position[0] + layer.center.x, b.position[1] + layer.center.y, b.position[2] + layer.center.z),
           priority: state >= 2 || hovered ? 12000 : 5200 + b.count * 8 - b.depth * 300,
           lift: 10,
@@ -1494,4 +1508,9 @@ export class Galaxy {
     this.controls.dispose();
     this.renderer.dispose();
   }
+}
+
+/** A number with its unit, singular or plural: "1 note", "82 notes". */
+function count(n: number, unit: string): string {
+  return `${n} ${unit}${n === 1 ? "" : "s"}`;
 }

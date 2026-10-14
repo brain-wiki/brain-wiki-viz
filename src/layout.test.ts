@@ -316,6 +316,7 @@ describe("level of detail", () => {
     expect(levelOf(f)).toBe("note");
     expect(levelOf(parentFocus(parentFocus(f)))).toBe("constellation");
     expect(hashToFocus(focusToHash(f), () => "c1")).toEqual(f);
+    expect(hashToFocus("#/t/%E0%A4", () => "c1")).toEqual({}); // a mangled link opens the overview
     expect(hashToFocus("#/", () => undefined)).toEqual({});
   });
 

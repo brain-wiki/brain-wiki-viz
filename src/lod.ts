@@ -71,7 +71,12 @@ export function focusToHash(f: Focus): string {
 }
 
 export function hashToFocus(hash: string, constellationOf: (slug: string) => string | undefined): Focus {
-  const parts = hash.replace(/^#\/?/, "").split("/").filter(Boolean).map(decodeURIComponent);
+  let parts: string[];
+  try {
+    parts = hash.replace(/^#\/?/, "").split("/").filter(Boolean).map(decodeURIComponent);
+  } catch {
+    return {}; // a mangled link opens the overview rather than failing to start
+  }
   if (parts[0] === "c" && parts[1]) return { constellation: parts[1] };
   if (parts[0] === "t" && parts[1]) {
     const f: Focus = { constellation: constellationOf(parts[1]), topic: parts[1] };

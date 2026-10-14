@@ -10,6 +10,7 @@ export function Preview({ c }: { c: Controller }) {
   const open = useStore(c.store, (s) => s.previewOpen);
   const focus = useStore(c.store, (s) => s.focus);
   const note = useStore(c.store, (s) => s.note);
+  const noteError = useStore(c.store, (s) => s.noteError);
   const onOpen = useCallback((t: LinkTarget) => c.openNote(t.id, t.topic), [c]);
   if (!open || !focus.note) return null;
   const ready = note && note.id === focus.note ? note : null;
@@ -33,7 +34,7 @@ export function Preview({ c }: { c: Controller }) {
       </header>
       <div class="preview-body">
         {!ready ? (
-          <div class="empty">Loading…</div>
+          <div class="empty">{noteError ?? "Loading…"}</div>
         ) : (
           <>
             {/* Like Obsidian's inline title, unless the note already opens with its own H1. */}

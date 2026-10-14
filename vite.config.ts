@@ -1,13 +1,11 @@
 import { defineConfig } from "vite";
-import { appDir } from "./scripts/app-dir.mjs";
+import { appDir, buildDir } from "./scripts/app-dir.mjs";
 
-const outDir = appDir();
-
-export default defineConfig({
+export default defineConfig(({ command }) => ({
   esbuild: { jsx: "automatic", jsxImportSource: "preact" },
   base: "/",
   build: {
-    outDir,
+    outDir: command === "build" ? buildDir() : appDir(),
     emptyOutDir: true,
     target: "es2022",
     cssCodeSplit: false,
@@ -23,4 +21,4 @@ export default defineConfig({
   server: {
     proxy: { "/api": process.env.BRAIN_VIZ_BACKEND ?? "http://127.0.0.1:8765" },
   },
-});
+}));

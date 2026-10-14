@@ -4,6 +4,15 @@
   "version": "0.0.0",
   "description": "The brain-wiki visualizer front end; builds into brain-wiki's src/brainwiki/viz/app/.",
   "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/brain-wiki/brain-wiki-viz.git"
+  },
+  "homepage": "https://github.com/brain-wiki/brain-wiki-viz",
+  "bugs": "https://github.com/brain-wiki/brain-wiki/issues",
+  "engines": {
+    "node": ">=20.19"
+  },
   "type": "module",
   "scripts": {
     "dev": "vite",

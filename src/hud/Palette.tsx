@@ -96,12 +96,13 @@ export function Palette({ c }: { c: Controller }) {
                 choose(sel);
               } else if (e.key === "Escape") {
                 e.preventDefault();
+                e.stopPropagation(); // close the palette only, not also the level below it
                 close();
               }
             }}
           />
           {busy && <span class="spinner" />}
-          <Kbd>esc</Kbd>
+          <Kbd>Esc</Kbd>
         </div>
         <div class="palette-results" role="listbox">
           {!needle && <div class="palette-section">Largest topics</div>}

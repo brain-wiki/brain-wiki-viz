@@ -1,7 +1,7 @@
 // Rebuild this checkout into a temporary directory and compare it with the committed bundle in
 // brain-wiki (BRAIN_WIKI_APP_DIR or the sibling checkout). Exit 1 if they differ.
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, readdirSync, readFileSync, rmSync, statSync } from "node:fs";
+import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, relative } from "node:path";
 import { appDir } from "./app-dir.mjs";
@@ -17,6 +17,10 @@ function files(dir, base = dir) {
 }
 
 const target = appDir();
+if (!existsSync(target)) {
+  console.error(`no bundle at ${target}: clone brain-wiki next to this repository, or set BRAIN_WIKI_APP_DIR`);
+  process.exit(1);
+}
 const out = mkdtempSync(join(tmpdir(), "brain-viz-"));
 try {
   execFileSync("npx", ["vite", "build", "--outDir", out, "--emptyOutDir", "--logLevel", "error"], { stdio: "inherit" });

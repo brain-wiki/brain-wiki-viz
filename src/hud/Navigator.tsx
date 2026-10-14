@@ -110,7 +110,7 @@ function Atlas({ c }: { c: Controller }) {
                     >
                       <Dot color={t.color} size={7} />
                       <span class="tree-title">{t.title}</span>
-                      {t.flagged > 0 && <span class="badge" title={`${t.flagged} flagged notes`}>{t.flagged}</span>}
+                      {t.flagged > 0 && <span class="badge" title={`${t.flagged} ${t.flagged === 1 ? "note" : "notes"} with issues`}>{t.flagged}</span>}
                       <span class="tree-count" title={`${fmt(t.notes)} notes`}>{fmt(t.notes)} notes</span>
                       <span class="bar" aria-hidden="true">
                         <span style={{ width: `${Math.max(4, (t.notes / maxNotes) * 100)}%`, background: t.color }} />
@@ -150,7 +150,7 @@ function HealthTab({ c }: { c: Controller }) {
   const health = useStore(c.store, (s) => s.health);
   const [open, setOpen] = useState<Flag | null>("conflict");
   const titles = useMemo(() => new Map(c.world.topics.map((t) => [t.slug, t])), [c]);
-  if (!data) return <div class="empty">Reading health…</div>;
+  if (!data) return <div class="empty">Finding notes with issues…</div>;
   const flags = FLAGS.filter((f) => (data.counts[f] ?? 0) > 0);
   return (
     <div class="health">

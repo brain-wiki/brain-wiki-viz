@@ -232,7 +232,7 @@ function TopBar({ c }: { c: Controller }) {
         <button class={`total${w.totals.flagged ? " warn" : ""}`} onClick={() => c.setNav("health")} title="Notes with issues: open the Issues tab">
           <b>{fmt(w.totals.flagged)}</b><span>with issues</span>
         </button>
-        <button class="total gold" onClick={() => c.select({ kind: "inbox" })} title="Session captures waiting to be merged automatically">
+        <button class="total gold" onClick={() => c.select({ kind: "inbox" })} title="Session captures waiting for consolidation: ask your agent to consolidate">
           <b>{fmt(w.episodes.count)}</b><span>inbox</span>
         </button>
       </div>
@@ -248,7 +248,7 @@ function Dock({ c }: { c: Controller }) {
     <div class="panel dock" role="toolbar" aria-label="Layers">
       <div class="dock-group">
         {FAMILIES.map((f) => (
-          <button key={f} class={`layer fam${layers[f] ? " on" : " off"}`} aria-pressed={layers[f]} onClick={() => c.setLayer(f, !layers[f])} title={`${FAMILY_HINT[f]} (${layers[f] ? "shown" : "hidden"}; ${FAMILIES.indexOf(f) + 1} toggles)`}>
+          <button key={f} class={`layer fam${layers[f] ? " on" : " off"}`} aria-pressed={layers[f]} onClick={() => c.setLayer(f, !layers[f])} title={`${FAMILY_HINT[f]} (${layers[f] ? "shown" : "hidden"}; press ${FAMILIES.indexOf(f) + 1} to toggle)`}>
             <span class="swatch" style={layers[f] ? { background: FAMILY_COLORS[f], boxShadow: `0 0 10px ${FAMILY_COLORS[f]}` } : { borderColor: FAMILY_COLORS[f] }} />
             <span>{FAMILY_LABEL[f]}</span>
           </button>
@@ -589,11 +589,11 @@ export function App({ c }: { c: Controller }) {
       {run && (
         <div class="panel run-banner">
           <span class="run-kind">{run.kind}</span> {run.at ? new Date(run.at).toLocaleString() : ""} · {run.touched.length} notes lit
-          <button class="link" onClick={() => c.setRun(null)}>clear</button>
+          <button class="link" onClick={() => c.setRun(null)}>Clear</button>
         </div>
       )}
       {health && (
-        <div class="panel health-legend" role="note" aria-label="Health mode legend">
+        <div class="panel health-legend" role="note" aria-label="Issue highlight legend">
           <span>Fewest issues</span>
           <span class="health-ramp" />
           <span>Most issues</span>
