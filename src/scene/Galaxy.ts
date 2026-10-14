@@ -12,9 +12,11 @@ import type { Source } from "../api";
 import { TILT, VIEW, galaxyLayout, noteWeight, topicLayout, type BranchPlacement, type GalaxyLayout, type Placed } from "../layout";
 import { chooseRevealed, healthSeverity, levelOf, projectedRadius, type Focus, type ViewSample } from "../lod";
 import { FLAGS, type NodeData, type Rel, type RunSummary, type TopicData, type TopicSummary, type World } from "../types";
+import { isMac } from "../util/keys";
 import { gaussian, rng } from "../util/rand";
 import { LabelLayer, type LabelCandidate } from "./labels";
 import { glowMaterial, starMaterial, VignetteShader } from "./shaders";
+import { zoomAt } from "./zoom";
 
 CameraControls.install({
   THREE: {
@@ -89,6 +91,7 @@ export type Quality = "high" | "low";
 export type QualityMode = "auto" | Quality;
 
 const VIEW_DIR = new THREE.Vector3(...VIEW);
+const MAC = isMac();
 
 export interface GalaxyEvents {
   hover(t: Target | null, x: number, y: number): void;
@@ -282,7 +285,6 @@ export class Galaxy {
     const R = this.layout.radius;
     this.camera = new THREE.PerspectiveCamera(50, 1, 0.5, R * 30);
     this.controls = new CameraControls(this.camera, this.renderer.domElement);
-    this.controls.dollyToCursor = true;
     this.controls.smoothTime = this.motion ? 0.55 : 0;
     this.controls.draggingSmoothTime = 0.12;
     this.controls.minDistance = 4;
@@ -295,7 +297,7 @@ export class Galaxy {
     this.controls.mouseButtons.left = CameraControls.ACTION.SCREEN_PAN;
     this.controls.mouseButtons.right = CameraControls.ACTION.SCREEN_PAN;
     this.controls.mouseButtons.middle = CameraControls.ACTION.DOLLY;
-    this.controls.mouseButtons.wheel = CameraControls.ACTION.DOLLY;
+    this.controls.mouseButtons.wheel = CameraControls.ACTION.NONE; // see wheel(): toward the cursor, on the map
     this.controls.touches.one = CameraControls.ACTION.TOUCH_SCREEN_PAN;
     this.controls.touches.two = CameraControls.ACTION.TOUCH_DOLLY;
     this.controls.touches.three = CameraControls.ACTION.NONE;
@@ -304,13 +306,7 @@ export class Galaxy {
     this.controls.addEventListener("controlstart", () => {
       this.userDriven = true;
     });
-    this.renderer.domElement.addEventListener(
-      "wheel",
-      () => {
-        this.userDriven = true;
-      },
-      { passive: true },
-    );
+    this.renderer.domElement.addEventListener("wheel", this.wheel, { passive: false });
 
     this.groups = new GroupTexture(this.topics.length);
     this.dustGroups = new GroupTexture(world.constellations.length);
@@ -944,6 +940,28 @@ export class Galaxy {
     this.flyTo({});
   }
 
+  private wheel = (e: WheelEvent): void => {
+    e.preventDefault();
+    this.userDriven = true;
+    // Read the wheel as camera-controls does: a line, or a trackpad pinch (ctrlKey), counts more than a pixel.
+    const factor = MAC ? -1 : -3;
+    const delta = e.deltaMode === 1 || e.ctrlKey ? e.deltaY / factor : e.deltaY / (factor * 10);
+    const rect = this.renderer.domElement.getBoundingClientRect();
+    const x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+    const y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
+    // The camera never turns, so this direction holds wherever a zoom in progress ends.
+    const ray = new THREE.Vector3(x, y, 0.5).unproject(this.camera).sub(this.camera.position).normalize();
+    const next = zoomAt(
+      this.controls.getPosition(new THREE.Vector3()),
+      this.controls.getTarget(new THREE.Vector3()),
+      ray,
+      Math.pow(0.95, delta * this.controls.dollySpeed),
+      this.controls.minDistance,
+      this.controls.maxDistance,
+    );
+    void this.controls.setLookAt(next.pos.x, next.pos.y, next.pos.z, next.target.x, next.target.y, next.target.z, this.motion);
+  };
+
   /** Camera position and look target, for the minimap. */
   view(): { pos: THREE.Vector3; target: THREE.Vector3 } {
     return { pos: this.camera.position.clone(), target: this.controls.getTarget(new THREE.Vector3()) };
@@ -1471,6 +1489,7 @@ export class Galaxy {
     this.disposed = true;
     this.renderer.setAnimationLoop(null);
     window.removeEventListener("resize", this.resize);
+    this.renderer.domElement.removeEventListener("wheel", this.wheel);
     for (const layer of this.revealed.values()) this.disposeLayer(layer);
     this.controls.dispose();
     this.renderer.dispose();
