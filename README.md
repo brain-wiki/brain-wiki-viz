@@ -1,8 +1,8 @@
 # brain-wiki-viz
 
 The front end of `brain viz`, the map of a [brain-wiki](https://github.com/brain-wiki/brain-wiki)
-brain: a WebGL galaxy with semantic zoom (galaxy → constellation → topic → note) and a HUD for
-navigating, searching, and checking health. The design is in brain-wiki's
+brain: a WebGL map with semantic zoom (overview → group → topic → note) and a panel for
+navigating, searching, and finding notes with issues. The design is in brain-wiki's
 `docs/design/12-visualizer.md`.
 
 brain-wiki ships the built bundle in `src/brainwiki/viz/app/`, so installing or running

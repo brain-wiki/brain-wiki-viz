@@ -292,8 +292,8 @@ describe("branch labels", () => {
       external: [],
     };
     const { branches } = folderTree(tree);
-    expect(branches.get("s/a")!.label).toBe("Authoring");
-    expect(branches.get("s/a/t")!.label).toBe("Tools");
+    expect(branches.get("s/a")!.label).toBe("Sync");
+    expect(branches.get("s/a/t")!.label).toBe("Conflicts");
     expect(branches.get("s/a/t")!.title).toBe("Lumen guide · Sync · Conflicts");
   });
 });
