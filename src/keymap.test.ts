@@ -10,7 +10,9 @@ describe("keymap", () => {
   const does = (e: KeyboardEvent, typing = false) => bindingFor(map, e, typing)?.does;
 
   it("maps each key to one action", () => {
-    expect(does(press("ArrowUp", { altKey: true }))).toMatch(/^Up or down one level/);
+    expect(does(press("ArrowUp", { metaKey: true }))).toMatch(/^Up or down one level/);
+    expect(does(press("ArrowDown", { ctrlKey: true }))).toMatch(/^Up or down one level/);
+    expect(does(press("ArrowUp", { altKey: true }))).toBeUndefined();
     expect(does(press("ArrowUp"))).toBeUndefined(); // plain arrows stay with the browser
     expect(does(press("]"))).toMatch(/same level/);
     expect(does(press("]", { metaKey: true }))).toBeUndefined(); // ⌘] is the browser's forward
@@ -32,7 +34,7 @@ describe("keymap", () => {
   it("lists every action on the sheet, with keys spelled for the platform", () => {
     expect(map.every((b) => b.keys.length > 0 && b.does)).toBe(true);
     const mac = keymap(keys(true));
-    expect(mac.find((b) => b.does.startsWith("Up or down"))!.keys).toEqual([["⌥", "↑"], ["⌥", "↓"]]);
+    expect(mac.find((b) => b.does.startsWith("Up or down"))!.keys).toEqual([["⌘", "↑"], ["⌘", "↓"]]);
     expect(mac.find((b) => b.does.startsWith("Back"))!.keys).toEqual([["⌘", "←"], ["⌘", "→"]]);
     expect(map.find((b) => b.does.startsWith("Back"))!.keys).toEqual([["Alt", "←"], ["Alt", "→"]]);
   });

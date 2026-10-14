@@ -215,10 +215,10 @@ export class Controller {
     void this.levelUp();
   }
 
-  /** Where Alt+↑ came from, so Alt+↓ can go back down the same way. */
+  /** Where Ctrl/⌘+↑ came from, so Ctrl/⌘+↓ can go back down the same way. */
   private climbed: Focus[] = [];
 
-  /** Alt+↑: one nesting level up, through folders and parent topics (design doc 12 §5). */
+  /** Ctrl/⌘+↑: one nesting level up, through folders and parent topics (design doc 12 §5). */
   async levelUp(): Promise<void> {
     const f = this.store.state.focus;
     const data = f.topic ? await this.source.topic(f.topic) : null;
@@ -228,7 +228,7 @@ export class Controller {
     this.focus(up);
   }
 
-  /** `[` and `]`: the previous or next place under the same parent, in Alt+↓'s order. */
+  /** `[` and `]`: the previous or next place under the same parent, in Ctrl/⌘+↓'s order. */
   async sibling(step: 1 | -1): Promise<void> {
     const f = this.store.state.focus;
     const parent = nestUp(f, this.world, f.topic ? await this.source.topic(f.topic) : null);
@@ -240,7 +240,7 @@ export class Controller {
     if (next && key(next) !== key(f)) this.focus(next);
   }
 
-  /** Alt+↓: one level down, back the way Alt+↑ came, else into the biggest place inside. */
+  /** Ctrl/⌘+↓: one level down, back the way Ctrl/⌘+↑ came, else into the biggest place inside. */
   async levelDown(): Promise<void> {
     const f = this.store.state.focus;
     const here = focusToHash(f);

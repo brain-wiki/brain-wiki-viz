@@ -7,7 +7,7 @@ import type { Keys } from "./util/keys";
 
 export type Section = "Move" | "Show" | "Find";
 
-/** Keys pressed together, as caps: ["⌥", "↑"]. */
+/** Keys pressed together, as caps: ["⌘", "↑"]. */
 export type Chord = string[];
 
 export interface Binding {
@@ -31,10 +31,10 @@ export function keymap(k: Keys): Binding[] {
   return [
     {
       section: "Move",
-      keys: [[k.alt, "↑"], [k.alt, "↓"]],
+      keys: [[k.mod, "↑"], [k.mod, "↓"]],
       join: "pair",
       does: "Up or down one level: note, folder, topic, group, overview",
-      match: (e) => e.altKey && !e.metaKey && !e.ctrlKey && (e.key === "ArrowUp" || e.key === "ArrowDown"),
+      match: (e) => (e.metaKey || e.ctrlKey) && !e.altKey && (e.key === "ArrowUp" || e.key === "ArrowDown"),
       run: (c, e) => void (e.key === "ArrowUp" ? c.levelUp() : c.levelDown()),
     },
     {

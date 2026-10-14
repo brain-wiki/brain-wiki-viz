@@ -1,4 +1,4 @@
-// Moving one nesting level at a time (Alt+↑ / Alt+↓, design doc 12 §5): the breadcrumb's chain
+// Moving one nesting level at a time (Ctrl/⌘+↑ and +↓, design doc 12 §5): the breadcrumb's chain
 // Overview › group › parent topics › topic › folders › note, one step at a time.
 import { type Branch, folderTree } from "./layout";
 import type { Focus } from "./lod";
