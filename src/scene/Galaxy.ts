@@ -1178,12 +1178,9 @@ export class Galaxy {
       });
     }
     const v = new THREE.Vector3();
+    const view = new THREE.Frustum().setFromProjectionMatrix(new THREE.Matrix4().multiplyMatrices(this.camera.projectionMatrix, this.camera.matrixWorldInverse));
     for (const layer of this.revealed.values()) {
       if (layer.fade < 0.5 || (this.topicPx.get(layer.slug) ?? 0) < 200) continue;
-      const order = layer.nodes
-        .map((nd, i) => ({ nd, i }))
-        .sort((a, b) => b.nd.degree - a.nd.degree)
-        .slice(0, 140);
       for (const b of layer.branches) {
         const state = b.note ? Math.max(this.neighborhood.get(b.note) ?? 0, this.hoverEnds.has(b.note) ? 2 : 0) : 0;
         const hovered = !!b.note && this.hovered === `n:${b.note}`;
@@ -1198,15 +1195,18 @@ export class Galaxy {
           emphasis: state >= 2 || hovered,
         });
       }
-      for (const { nd, i } of order) {
-        if (layer.branchNotes.has(nd.id)) continue; // labeled as its branch above
+      // Every star in view competes for a label, the biggest on screen first; a fixed shortlist
+      // of the best-linked notes left the ones being zoomed into unlabeled.
+      layer.nodes.forEach((nd, i) => {
+        if (layer.branchNotes.has(nd.id)) return; // labeled as its branch above
         v.set(layer.world[i * 3], layer.world[i * 3 + 1], layer.world[i * 3 + 2]);
+        if (!view.containsPoint(v)) return;
         const d = cam.distanceTo(v);
         const starPx = (layer.sizes[i] * scale) / Math.max(d, 1);
         const hoverEnd = this.hoverEnds.has(nd.id);
         const state = Math.max(this.neighborhood.get(nd.id) ?? 0, hoverEnd ? 2 : 0);
         const hub = nd.id === layer.data.hub;
-        if (starPx < 3.5 && state < 2 && !hub) continue;
+        if (starPx < 3.5 && state < 2 && !hub) return;
         const flagged = nd.flags.length > 0;
         const priority = hoverEnd ? 12500 : state === 3 ? 12000 : state === 2 ? 8500 : hub ? 6500 : (flagged ? 2500 : 1000) + nd.degree * 20 + starPx * 10;
         cands.push({
@@ -1220,7 +1220,7 @@ export class Galaxy {
           lift: starPx / 2 + 6,
           emphasis: state >= 2 || this.hovered === `n:${nd.id}`,
         });
-      }
+      });
     }
     this.labels.update(cands, this.camera, w, h);
   }
