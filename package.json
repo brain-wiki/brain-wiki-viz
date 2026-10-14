@@ -9,9 +9,9 @@
     "url": "https://github.com/brain-wiki/brain-wiki-viz.git"
   },
   "homepage": "https://github.com/brain-wiki/brain-wiki-viz",
-  "bugs": "https://github.com/brain-wiki/brain-wiki/issues",
+  "bugs": "https://github.com/brain-wiki/brain-wiki-viz/issues",
   "engines": {
-    "node": ">=20.19"
+    "node": "^20.19.0 || >=22.12.0"
   },
   "type": "module",
   "scripts": {

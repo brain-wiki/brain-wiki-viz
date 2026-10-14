@@ -11,7 +11,7 @@ brain-wiki never needs Node. This repository is only for people changing the vis
 ## Develop
 
 Clone it next to brain-wiki (`~/src/brain-wiki` and `~/src/brain-wiki-viz`, for example). It
-needs Node 20.19 or newer:
+needs Node 20.19 or newer (on Node 22, 22.12 or newer):
 
 ```sh
 npm ci

@@ -147,9 +147,11 @@ export function nested(topics: TopicSummary[], order: (a: TopicSummary, b: Topic
 
 function HealthTab({ c }: { c: Controller }) {
   const data = useStore(c.store, (s) => s.healthData);
+  const error = useStore(c.store, (s) => s.healthError);
   const health = useStore(c.store, (s) => s.health);
   const [open, setOpen] = useState<Flag | null>("conflict");
   const titles = useMemo(() => new Map(c.world.topics.map((t) => [t.slug, t])), [c]);
+  if (!data && error) return <div class="empty">Could not find notes with issues: {error}</div>;
   if (!data) return <div class="empty">Finding notes with issues…</div>;
   const flags = FLAGS.filter((f) => (data.counts[f] ?? 0) > 0);
   return (

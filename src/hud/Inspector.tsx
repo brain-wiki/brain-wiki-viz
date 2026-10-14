@@ -297,7 +297,7 @@ function NoteCard({ c, id, slug }: { c: Controller; id: string; slug: string }) 
           <div class="section-title">Facts <span class="section-count">{note!.claims!.length}</span></div>
           <ul class="claims">
             {note!.claims!.map((cl, i) => (
-              <li key={cl.id ?? i} class={`claim claim-${cl.status}${cl.taint === "true" || cl.taint === "unknown" ? " claim-unverified" : ""}`}>
+              <li key={cl.id ?? i} class={`claim claim-${cl.status}${cl.inputs && cl.inputs !== "local" ? " claim-unverified" : ""}`}>
                 {plainLinks(cl.text)}
               </li>
             ))}

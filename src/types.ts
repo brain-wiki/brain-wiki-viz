@@ -113,7 +113,8 @@ export interface Claim {
   id: string | null;
   text: string;
   status: string;
-  taint?: string | null;
+  /** local, external, or unknown; anything but local reads as unverified. */
+  inputs?: string | null;
 }
 
 export interface Backlink {

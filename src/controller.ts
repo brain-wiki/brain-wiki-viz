@@ -28,6 +28,7 @@ export interface AppState {
   paletteOpen: boolean;
   helpOpen: boolean;
   healthData: Health | null;
+  healthError: string | null;
   run: RunSummary | null;
   toast: string | null;
   embedded: boolean;
@@ -81,6 +82,7 @@ export class Controller {
       paletteOpen: false,
       helpOpen: false,
       healthData: null,
+      healthError: null,
       run: null,
       toast: null,
       embedded: source.embedded,
@@ -349,8 +351,13 @@ export class Controller {
   }
 
   async loadHealth(): Promise<void> {
-    const healthData = await this.source.health();
-    this.store.set({ healthData });
+    this.store.set({ healthError: null });
+    try {
+      const healthData = await this.source.health();
+      this.store.set({ healthData });
+    } catch (err) {
+      this.store.set({ healthError: loadError(err) });
+    }
   }
 
   setNav(tab: NavTab): void {
