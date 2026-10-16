@@ -33,7 +33,7 @@ describe("note markdown", () => {
   });
 
   it("drops HTML and Obsidian comments", () => {
-    const all = render("A claim. <!-- id:c-1; at:2026-10-01 -->\n\nShown %%hidden%% text").map((e) => e.text).join(" ");
+    const all = render("Lumen syncs. <!-- id:c-1; at:2026-10-01 -->\n\nShown %%hidden%% text").map((e) => e.text).join(" ");
     expect(all).not.toContain("id:c-1");
     expect(all).not.toContain("hidden");
   });
@@ -64,7 +64,7 @@ describe("note markdown", () => {
 });
 
 describe("property values", () => {
-  it("open relation targets and keep the qualifier and note as text", () => {
+  it("open link targets and keep the text around them as text", () => {
     const opened: string[] = [];
     const ctx = linkContext(links, (t) => opened.push(t.id));
     const els = walk(linkedText("[[fts5|FTS5]] (replaced) — took 800 ms, #not-a-tag", ctx) as Node);

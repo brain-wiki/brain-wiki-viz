@@ -72,7 +72,7 @@ export class Controller {
       noteError: null,
       topicError: null,
       // Part of (spokes to the hub) repeats what clustering already shows; wikilinks are noisy.
-      layers: Object.fromEntries(FAMILIES.map((f) => [f, f !== "links_to"])) as Layers,
+      layers: Object.fromEntries(FAMILIES.map((f) => [f, true])) as Layers,
       health: false,
       labels: true,
       quality: mode === "low" ? "low" : "high",

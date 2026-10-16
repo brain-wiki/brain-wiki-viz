@@ -3,22 +3,28 @@ import type { Controller } from "../controller";
 import { FAMILY_COLORS, type Family } from "../scene/Galaxy";
 import { type Branch, folderTree } from "../layout";
 import { useStore } from "../store";
-import { FLAGS, type NodeData, type Rel, type TopicData } from "../types";
+import { FLAGS, type Backlink, type NodeData, type NoteDetail, type Outlink, type Rel, type TopicData } from "../types";
 import { Chip, Dot, FLAG_COLOR, FLAG_LABEL, fmt, Icon } from "./ui";
 
-const REL_LABEL: Record<Rel, string> = {
-  part_of: "Part of",
-  has_part: "Contains",
-  depends_on: "Depends on",
-  enables: "Enables",
-  conflicts_with: "Conflicts with",
-  supersedes: "Replaces",
+/** How each link reads from the note that holds it, in display order. */
+const OUT_LABEL: Record<Outlink["relation"], string> = {
   superseded_by: "Replaced by",
-  related_to: "Related to",
   links_to: "Links to",
+  cites: "Cites",
 };
 
-/** `[[target|alias]]` → `alias`, `[[target]]` → `target`; the result is still rendered as text. */
+/** How each link reads from the note it points to: this note supersedes, or is linked or cited by, that one. */
+const IN_LABEL: Record<Backlink["relation"], string> = {
+  supersedes: "replaced by this",
+  linked_from: "links here",
+  cited_by: "cites this",
+};
+
+const OUT_FAMILY: Record<Outlink["relation"], Family> = { superseded_by: "supersedes", links_to: "links", cites: "cites" };
+const IN_FAMILY: Record<Backlink["relation"], Family> = { supersedes: "supersedes", linked_from: "links", cited_by: "cites" };
+const OUT_NAME: Record<Rel, Outlink["relation"]> = { superseded_by: "superseded_by", links_to: "links_to", source: "cites" };
+const IN_NAME: Record<Rel, Backlink["relation"]> = { superseded_by: "supersedes", links_to: "linked_from", source: "cited_by" };
+
 /** Note text is shown as plain text, never rendered: drop wikilink brackets and emphasis markers. */
 function plainLinks(s: string): string {
   return s
@@ -27,57 +33,75 @@ function plainLinks(s: string): string {
     .replace(/`([^`]+)`/g, "$1");
 }
 
-const REL_FAMILY: Record<Rel, Family> = {
-  part_of: "part_of",
-  has_part: "part_of",
-  depends_on: "depends_on",
-  enables: "depends_on",
-  conflicts_with: "conflicts_with",
-  supersedes: "supersedes",
-  superseded_by: "supersedes",
-  related_to: "related_to",
-  links_to: "links_to",
-};
-
-const INVERSE: Partial<Record<Rel, Rel>> = {
-  part_of: "has_part",
-  has_part: "part_of",
-  depends_on: "enables",
-  enables: "depends_on",
-  supersedes: "superseded_by",
-  superseded_by: "supersedes",
-};
-
-const ORDER: Rel[] = ["superseded_by", "supersedes", "conflicts_with", "depends_on", "enables", "part_of", "has_part", "related_to", "links_to"];
-
-interface RelRow {
-  rel: Rel;
-  id: string;
+interface LinkRow {
+  relation: string;
+  family: Family;
+  label: string;
+  /** null for a link that names no note. */
+  id: string | null;
   title: string;
   topic: string | null;
 }
 
-/** Relations of one note, from the topic payload (ids, so every row can fly). */
-function relationsOf(note: string, data: TopicData | null): RelRow[] {
-  if (!data) return [];
+/** Topic of each note the topic payload knows: its own notes and the far ends of its external links. */
+function topicsOf(data: TopicData | null): Map<string, string | null> {
+  const out = new Map<string, string | null>();
+  if (!data) return out;
+  for (const n of data.nodes) out.set(n.id, data.slug);
+  for (const e of data.external) out.set(e.dir === "out" ? e.target : e.source, e.topic);
+  return out;
+}
+
+/** One note's links in both directions from the topic payload, for exported files that carry no note detail. */
+function linksFromTopic(note: string, data: TopicData | null): { out: LinkRow[]; in: LinkRow[] } {
+  const rows = { out: [] as LinkRow[], in: [] as LinkRow[] };
+  if (!data) return rows;
   const titles = new Map(data.nodes.map((n) => [n.id, n.title]));
-  const rows: RelRow[] = [];
   const seen = new Set<string>();
-  const add = (rel: Rel, id: string, title: string, topic: string | null) => {
-    const key = `${rel}|${id}`;
+  const add = (dir: "out" | "in", rel: Rel, id: string, title: string, topic: string | null) => {
+    const key = `${dir}|${rel}|${id}`;
     if (seen.has(key) || id === note) return;
     seen.add(key);
-    rows.push({ rel, id, title, topic });
+    if (dir === "out") {
+      const r = OUT_NAME[rel];
+      rows.out.push({ relation: r, family: OUT_FAMILY[r], label: OUT_LABEL[r], id, title, topic });
+    } else {
+      const r = IN_NAME[rel];
+      rows.in.push({ relation: r, family: IN_FAMILY[r], label: IN_LABEL[r], id, title, topic });
+    }
   };
   for (const l of data.links) {
-    if (l.source === note) add(l.rel, l.target, titles.get(l.target) ?? l.target, data.slug);
-    else if (l.target === note) add(l.rel === "conflicts_with" || l.rel === "related_to" || l.rel === "links_to" ? l.rel : INVERSE[l.rel] ?? l.rel, l.source, titles.get(l.source) ?? l.source, data.slug);
+    if (l.source === note) add("out", l.rel, l.target, titles.get(l.target) ?? l.target, data.slug);
+    else if (l.target === note) add("in", l.rel, l.source, titles.get(l.source) ?? l.source, data.slug);
   }
   for (const e of data.external) {
-    if (e.source === note) add(e.rel, e.target, e.title, e.topic);
-    else if (e.target === note) add(e.rel === "conflicts_with" || e.rel === "related_to" || e.rel === "links_to" ? e.rel : INVERSE[e.rel] ?? e.rel, e.source, e.title, e.topic);
+    if (e.source === note) add("out", e.rel, e.target, e.title, e.topic);
+    else if (e.target === note) add("in", e.rel, e.source, e.title, e.topic);
   }
-  return rows.sort((a, b) => ORDER.indexOf(a.rel) - ORDER.indexOf(b.rel) || a.title.localeCompare(b.title));
+  return rows;
+}
+
+/** The note's links as the server read them, with each target's topic so a row can fly there. */
+function linksFromNote(note: NoteDetail, topics: Map<string, string | null>): { out: LinkRow[]; in: LinkRow[] } {
+  const topicOf = (id: string | null, raw?: string) => (id ? (raw ? note.links?.[raw]?.topic : undefined) ?? topics.get(id) ?? null : null);
+  return {
+    out: (note.outlinks ?? []).map((o) => ({
+      relation: o.relation,
+      family: OUT_FAMILY[o.relation] ?? "links",
+      label: OUT_LABEL[o.relation] ?? o.relation,
+      id: o.resolved ? o.id : null,
+      title: o.title ?? o.target,
+      topic: topicOf(o.resolved ? o.id : null, o.target),
+    })),
+    in: (note.backlinks ?? []).map((b) => ({
+      relation: b.relation,
+      family: IN_FAMILY[b.relation] ?? "links",
+      label: IN_LABEL[b.relation] ?? b.relation.replace(/_/g, " "),
+      id: b.id,
+      title: b.title,
+      topic: topicOf(b.id),
+    })),
+  };
 }
 
 function Stat({ label, value, tone }: { label: string; value: string | number; tone?: string }) {
@@ -244,12 +268,25 @@ function NoteCard({ c, id, slug }: { c: Controller; id: string; slug: string }) 
   const [copied, setCopied] = useState(false);
   const t = c.world.topics.find((x) => x.slug === slug);
   const node = data?.nodes.find((n) => n.id === id);
-  const rels = useMemo(() => relationsOf(id, data?.slug === slug ? data : null), [id, data, slug]);
+  const links = useMemo(() => {
+    const ready = data?.slug === slug ? data : null;
+    // An exported file has no note detail; the topic payload still knows which notes link.
+    return note && !note.partial ? linksFromNote(note, topicsOf(ready)) : linksFromTopic(id, ready);
+  }, [id, note, data, slug]);
   const title = note?.title ?? node?.title ?? "…";
   const status = note?.status ?? node?.status;
-  const byPath = new Map((data?.nodes ?? []).map((n) => [n.path, n]));
-  const grouped = new Map<Rel, RelRow[]>();
-  for (const r of rels) grouped.set(r.rel, [...(grouped.get(r.rel) ?? []), r]);
+  const grouped = new Map<string, LinkRow[]>();
+  for (const r of links.out) grouped.set(r.relation, [...(grouped.get(r.relation) ?? []), r]);
+  const order = Object.keys(OUT_LABEL);
+  const groups = [...grouped].sort(([a], [b]) => order.indexOf(a) - order.indexOf(b));
+  const row = (r: LinkRow, meta?: string) => (
+    <button class="row" key={`${r.relation}${r.id ?? r.title}`} disabled={!r.id || !r.topic} title={r.id ? undefined : "No note by this name"} onClick={() => r.id && c.openNote(r.id, r.topic)}>
+      <span class="row-title">{r.title}</span>
+      {meta && <span class="row-meta">{meta}</span>}
+      {!meta && r.topic && r.topic !== slug && <span class="row-meta">{c.world.topics.find((x) => x.slug === r.topic)?.title ?? r.topic}</span>}
+      {!r.id && <span class="row-meta">not found</span>}
+    </button>
+  );
   const path = note?.path ?? node?.path;
   const place = useMemo(() => {
     if (data?.slug !== slug) return [] as Branch[];
@@ -287,49 +324,25 @@ function NoteCard({ c, id, slug }: { c: Controller; id: string; slug: string }) 
         </div>
       )}
       {(note?.banners ?? []).map((b) => (
-        <div key={b} class={`banner${/conflict/i.test(b) ? " banner-red" : ""}`}>{b}</div>
+        <div key={b} class={`banner${b.startsWith("⚠") ? "" : " banner-info"}`}>{b}</div>
       ))}
       {note?.summary && <p class="insp-desc">{plainLinks(note.summary)}</p>}
       {!note && <div class="empty small">{noteError ?? "Reading the note…"}</div>}
-      {note?.partial && <div class="hint">This exported file has no fact text.</div>}
-      {(note?.claims?.length ?? 0) > 0 && (
-        <>
-          <div class="section-title">Facts <span class="section-count">{note!.claims!.length}</span></div>
-          <ul class="claims">
-            {note!.claims!.map((cl, i) => (
-              <li key={cl.id ?? i} class={`claim claim-${cl.status}${cl.inputs && cl.inputs !== "local" ? " claim-unverified" : ""}`}>
-                {plainLinks(cl.text)}
-              </li>
-            ))}
-          </ul>
-        </>
-      )}
-      {grouped.size > 0 && <div class="section-title">Relations <span class="section-count">{rels.length}</span></div>}
-      {[...grouped].map(([rel, rows]) => (
+      {note?.partial && <div class="hint">This exported file has the map only; serve the brain with brain viz to read the note.</div>}
+      {groups.length > 0 && <div class="section-title">Links <span class="section-count">{links.out.length}</span></div>}
+      {groups.map(([rel, rows]) => (
         <div class="rel-group" key={rel}>
-          <div class="rel-label" style={{ color: FAMILY_COLORS[REL_FAMILY[rel]] }}>{REL_LABEL[rel]}</div>
-          {rows.slice(0, 12).map((r) => (
-            <button class="row" key={`${rel}${r.id}`} onClick={() => c.openNote(r.id, r.topic)}>
-              <span class="row-title">{r.title}</span>
-              {r.topic && r.topic !== slug && <span class="row-meta">{c.world.topics.find((x) => x.slug === r.topic)?.title ?? r.topic}</span>}
-            </button>
-          ))}
+          <div class="rel-label" style={{ color: FAMILY_COLORS[rows[0].family] }}>{rows[0].label}</div>
+          {rows.slice(0, 12).map((r) => row(r))}
           {rows.length > 12 && <div class="more">and {rows.length - 12} more</div>}
         </div>
       ))}
-      {(note?.backlinks?.length ?? 0) > 0 && (
+      {links.in.length > 0 && (
         <>
-          <div class="section-title">Linked from <span class="section-count">{note!.backlinks!.length}</span></div>
+          <div class="section-title">Linked from <span class="section-count">{links.in.length}</span></div>
           <div class="rows">
-            {note!.backlinks!.slice(0, 12).map((b) => {
-              const target = byPath.get(b.path);
-              return (
-                <button class="row" key={b.path + b.relation} disabled={!target} onClick={() => target && c.openNote(target.id, slug)}>
-                  <span class="row-title">{b.title}</span>
-                  <span class="row-meta">{(REL_LABEL[b.relation as Rel] ?? b.relation.replace("_", " ")).toLowerCase()}</span>
-                </button>
-              );
-            })}
+            {links.in.slice(0, 12).map((r) => row(r, r.label))}
+            {links.in.length > 12 && <div class="more">and {links.in.length - 12} more</div>}
           </div>
         </>
       )}

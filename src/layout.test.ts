@@ -68,10 +68,9 @@ describe("topic layout", () => {
     hub: "h",
     nodes: ["h", "a", "b", "c", "d"].map((id) => ({
       id, title: id, path: `${id}.md`, kind: id === "h" ? "hub" : "note", topic: "t0", type: null,
-      status: "active", updated: null, aliases: [], degree: 1, lines: 20, claims: 0,
-      superseded_claims: 0, unverified_claims: 0, flags: [],
+      status: "active", updated: null, aliases: [], degree: 1, lines: 20, flags: [],
     })),
-    links: [{ source: "a", target: "b", rel: "depends_on" }],
+    links: [{ source: "a", target: "b", rel: "links_to" }],
     external: [],
   };
 
@@ -98,7 +97,7 @@ describe("folder tree", () => {
     nodes: paths.map((rel) => ({
       id: rel.split("/").pop()!, title: `T ${rel}`, path: `topics/x/${rel}.md`, kind: rel === "index" ? "hub" : "note",
       topic: "x", type: null, status: "active", updated: null, aliases: [], degree: 1, lines: 20,
-      claims: 0, superseded_claims: 0, unverified_claims: 0, flags: [],
+      flags: [],
     })),
     links: [],
     external: [],
@@ -286,7 +285,7 @@ describe("branch labels", () => {
       nodes: rels.map((rel) => ({
         id: rel, title: titles[rel] ?? rel, path: `topics/l/${rel}.md`, kind: rel === "index" ? "hub" : "note",
         topic: "l", type: null, status: "active", updated: null, aliases: [], degree: 1, lines: 20,
-        claims: 0, superseded_claims: 0, unverified_claims: 0, flags: [],
+        flags: [],
       })),
       links: [],
       external: [],

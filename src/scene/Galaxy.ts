@@ -44,9 +44,9 @@ export type Target =
   | { kind: "topic"; slug: string }
   | { kind: "note"; id: string; topic: string }
   | { kind: "inbox" }
-  /** A typed relation; pulses run from `from` to `to` (prerequisite → dependent, old → new). */
+  /** A link between two notes; it runs from `from` to `to` (the linking note → the linked one, old → new). */
   | { kind: "link"; family: Family; from: LinkEnd; to: LinkEnd }
-  /** Typed links between two topics (or constellations), drawn as one curve. */
+  /** Links between two topics (or constellations), drawn as one curve. */
   | { kind: "flow"; level: "topic" | "constellation"; a: string; b: string; total: number; rels: Record<string, number> };
 
 interface FlowHit {
@@ -66,25 +66,22 @@ interface Picked {
   color?: string;
 }
 
-export type Family = "part_of" | "depends_on" | "conflicts_with" | "supersedes" | "related_to" | "links_to";
+/** Body links, supersession (old → new), and citations (citing → cited), each a layer of its own. */
+export type Family = "links" | "supersedes" | "cites";
 export type Layers = Record<Family, boolean>;
-export const FAMILIES: Family[] = ["part_of", "depends_on", "conflicts_with", "supersedes", "related_to", "links_to"];
+export const FAMILIES: Family[] = ["links", "supersedes", "cites"];
 export const FAMILY_COLORS: Record<Family, string> = {
-  part_of: "#5d6b8a",
-  depends_on: "#4f8dff",
-  conflicts_with: "#ff3b4f",
+  links: "#9a7bff",
   supersedes: "#ffb347",
-  related_to: "#9a7bff",
-  links_to: "#7f8aa3",
+  cites: "#6f7d99",
 };
 const FAMILY_STYLE: Record<Family, { width: number; opacity: number; dashed: boolean }> = {
-  part_of: { width: 1.0, opacity: 0.32, dashed: false },
-  depends_on: { width: 1.7, opacity: 0.75, dashed: true },
-  conflicts_with: { width: 2.4, opacity: 0.95, dashed: false },
+  links: { width: 1.2, opacity: 0.38, dashed: false },
   supersedes: { width: 2.0, opacity: 0.85, dashed: true },
-  related_to: { width: 1.2, opacity: 0.38, dashed: false },
-  links_to: { width: 1.0, opacity: 0.22, dashed: false },
+  cites: { width: 1.0, opacity: 0.2, dashed: false },
 };
+/** The folder tree inside a topic: always drawn, not a layer. */
+const TREE_STYLE = { width: 1.0, opacity: 0.32 };
 
 export type Quality = "high" | "low";
 /** What the user chose: a fixed quality, or let the map measure the GPU. */
@@ -118,33 +115,22 @@ interface TopicLayer {
   nodes: NodeData[];
   world: Float32Array;
   lines: Map<Family, LineSegments2[]>;
+  tree: LineSegments2[]; // the folder skeleton
   branches: BranchPlacement[]; // the topic's folder tree
   branchNotes: Set<string>; // folder notes: labeled as their branch
   fade: number;
   target: number;
 }
 
-/** Normalise a relation to a family and an arrow from "earlier" to "later" end. */
-function familyOf(rel: Rel, source: string, target: string): [Family, string, string] | null {
+/** A link's family; every link runs from its source (the note holding it) to its target. */
+function familyOf(rel: Rel): Family | null {
   switch (rel) {
-    case "part_of":
-      return ["part_of", source, target];
-    case "has_part":
-      return ["part_of", target, source];
-    case "depends_on":
-      return ["depends_on", target, source]; // prerequisite → dependent
-    case "enables":
-      return ["depends_on", source, target];
-    case "supersedes":
-      return ["supersedes", target, source]; // old → new
-    case "superseded_by":
-      return ["supersedes", source, target];
-    case "conflicts_with":
-      return ["conflicts_with", source, target];
-    case "related_to":
-      return ["related_to", source, target];
     case "links_to":
-      return ["links_to", source, target];
+      return "links";
+    case "superseded_by":
+      return "supersedes"; // old → new
+    case "source":
+      return "cites"; // citing → cited
     default:
       return null;
   }
@@ -236,7 +222,7 @@ export class Galaxy {
   private focus: Focus = {};
   private neighborhood = new Map<string, number>();
   private run: RunSummary | null = null;
-  private layers: Layers = { part_of: true, depends_on: true, conflicts_with: true, supersedes: true, related_to: true, links_to: false };
+  private layers: Layers = { links: true, supersedes: true, cites: true };
   private health = false;
   private severity: Float32Array;
   private dustSeverity: Float32Array;
@@ -417,13 +403,11 @@ export class Galaxy {
   }
 
   private buildNebulae(): void {
-    const parts: { slug: string; i: number; kind: "core" | "cloud" | "conflict" }[] = [];
+    const parts: { slug: string; i: number; kind: "core" | "cloud" }[] = [];
     this.topics.forEach((t) => {
       const cloud = Math.max(10, Math.min(80, Math.round(10 + t.notes * 0.55)));
       parts.push({ slug: t.slug, i: 0, kind: "core" });
       for (let k = 0; k < cloud; k++) parts.push({ slug: t.slug, i: k, kind: "cloud" });
-      const conflicts = Math.min(6, t.flags.conflict ?? 0);
-      for (let k = 0; k < conflicts; k++) parts.push({ slug: t.slug, i: k, kind: "conflict" });
     });
     const mat = glowMaterial(this.groups.texture, Math.max(1, this.topics.length));
     this.glowMats.push(mat);
@@ -442,19 +426,13 @@ export class Galaxy {
         return;
       }
       const r = rng(`neb:${part.slug}:${part.kind}:${part.i}`);
-      const spread = part.kind === "conflict" ? 0.3 : 0.42;
+      const spread = 0.42;
       a.position.set([p.x + gaussian(r) * p.r * spread, p.y + gaussian(r) * p.r * spread * 0.5, p.z + gaussian(r) * p.r * spread], j * 3);
-      if (part.kind === "conflict") {
-        a.aColor.set([1, 0.2, 0.26], j * 3);
-        a.aSize[j] = p.r * 0.38;
-        a.aAlpha[j] = 0.35;
-      } else {
-        const [cr, cg, cb] = rgb(t.color);
-        const v = 0.75 + 0.5 * r();
-        a.aColor.set([cr * v, cg * v, cb * v], j * 3);
-        a.aSize[j] = p.r * (0.3 + 0.45 * r());
-        a.aAlpha[j] = (0.08 + 0.1 * r()) * fresh;
-      }
+      const [cr, cg, cb] = rgb(t.color);
+      const v = 0.75 + 0.5 * r();
+      a.aColor.set([cr * v, cg * v, cb * v], j * 3);
+      a.aSize[j] = p.r * (0.3 + 0.45 * r());
+      a.aAlpha[j] = (0.08 + 0.1 * r()) * fresh;
     }, mat);
     this.scene.add(pts);
   }
@@ -492,7 +470,7 @@ export class Galaxy {
     return m;
   }
 
-  /** A typed trail: always a solid line; directed families add pulses running along it when motion is on. */
+  /** A trail: always a solid line; directed families add pulses running along it when motion is on. */
   private trail(pos: number[], colors: number[], key: string, width: number, opacity: number, directed: boolean): LineSegments2[] {
     const pulsed = directed && this.motion;
     const base = this.segments(pos, colors, this.lineMaterial(key, width, pulsed ? opacity * 0.55 : opacity, false));
@@ -696,13 +674,11 @@ export class Galaxy {
     };
     const perFamily = new Map<Family, { pos: number[]; colors: number[] }>();
     for (const l of data.links) {
-      const fam = familyOf(l.rel, l.source, l.target);
-      if (!fam) continue;
-      const [family, from, to] = fam;
-      if (family === "part_of") continue; // the folder tree below draws containment
-      const a = local(from);
-      const b = local(to);
-      if (!a || !b || from === to) continue;
+      const family = familyOf(l.rel);
+      if (!family) continue;
+      const a = local(l.source);
+      const b = local(l.target);
+      if (!a || !b || l.source === l.target) continue;
       let bucket = perFamily.get(family);
       if (!bucket) perFamily.set(family, (bucket = { pos: [], colors: [] }));
       bucket.pos.push(...a, ...b);
@@ -720,23 +696,22 @@ export class Galaxy {
       lines.set(family, trail);
     }
     // The folder tree (design doc 12 §3): a link from each folder's core to its parent's.
+    let tree: LineSegments2[] = [];
     if (placement.skeleton.length) {
-      const tree: number[] = [];
+      const shade: number[] = [];
       for (const t of placement.skeletonShade) {
         const k = 0.3 + 0.7 * t;
-        tree.push(tr * k, tg * k, tb * k);
+        shade.push(tr * k, tg * k, tb * k);
       }
-      const st = FAMILY_STYLE.part_of;
-      const trail = this.trail([...placement.skeleton], tree, "fam:part_of", st.width, st.opacity, false);
-      for (const line of trail) {
+      tree = this.trail([...placement.skeleton], shade, "tree", TREE_STYLE.width, TREE_STYLE.opacity, false);
+      for (const line of tree) {
         line.visible = false;
         group.add(line);
       }
-      lines.set("part_of", trail);
     }
     this.scene.add(group);
     const branchNotes = new Set(placement.branches.flatMap((b) => (b.note ? [b.note] : [])));
-    return { slug: data.slug, data, center, radius: p.r, group, stars, material, state, sizes, ids: placement.ids, index, nodes, world, lines, branches: placement.branches, branchNotes, fade: 0, target: 1 };
+    return { slug: data.slug, data, center, radius: p.r, group, stars, material, state, sizes, ids: placement.ids, index, nodes, world, lines, tree, branches: placement.branches, branchNotes, fade: 0, target: 1 };
   }
 
   private disposeLayer(layer: TopicLayer): void {
@@ -745,6 +720,7 @@ export class Galaxy {
     layer.material.dispose();
     this.starMats.delete(layer.material);
     for (const trail of layer.lines.values()) for (const line of trail) line.geometry.dispose();
+    for (const line of layer.tree) line.geometry.dispose();
   }
 
   // --- state -------------------------------------------------------------------------------
@@ -760,7 +736,7 @@ export class Galaxy {
     if (fly) this.flyTo(f);
   }
 
-  /** The selected note, its typed neighbours, and bright lines to each (also across topics). */
+  /** The selected note, the notes it links to or is linked from, and bright lines to each (also across topics). */
   private buildNeighborhood(): void {
     this.neighborhood.clear();
     this.focusHits = [];
@@ -784,14 +760,12 @@ export class Galaxy {
     };
     const per = new Map<Family, { pos: number[]; colors: number[] }>();
     const me: LinkEnd = { id: f.note, title: layer.nodes[i].title, topic: layer.slug };
-    const add = (rel: Rel, source: string, target: string, other: string, topic: string | null, title: string) => {
-      if (rel === "links_to") return;
-      const fam = familyOf(rel, source, target);
+    const add = (rel: Rel, source: string, other: string, topic: string | null, title: string) => {
+      const family = familyOf(rel);
       const to = where(other, topic);
-      if (!fam || !to) return;
+      if (!family || !to) return;
       if (!this.neighborhood.has(other)) this.neighborhood.set(other, 2);
-      const [family, a] = fam;
-      const forward = a === f.note;
+      const forward = source === f.note;
       const them: LinkEnd = { id: other, title, topic: topic ?? layer.slug };
       this.focusHits.push(forward ? { family, from: me, to: them, a: from, b: to } : { family, from: them, to: me, a: to, b: from });
       let b = per.get(family);
@@ -802,12 +776,12 @@ export class Galaxy {
     };
     const titleOf = (id: string) => layer.nodes[layer.index.get(id) ?? -1]?.title ?? id;
     for (const l of layer.data.links) {
-      if (l.source === f.note) add(l.rel, l.source, l.target, l.target, layer.slug, titleOf(l.target));
-      else if (l.target === f.note) add(l.rel, l.source, l.target, l.source, layer.slug, titleOf(l.source));
+      if (l.source === f.note) add(l.rel, l.source, l.target, layer.slug, titleOf(l.target));
+      else if (l.target === f.note) add(l.rel, l.source, l.source, layer.slug, titleOf(l.source));
     }
     for (const e of layer.data.external) {
-      if (e.source === f.note) add(e.rel, e.source, e.target, e.target, e.topic, e.title);
-      else if (e.target === f.note) add(e.rel, e.source, e.target, e.source, e.topic, e.title);
+      if (e.source === f.note) add(e.rel, e.source, e.target, e.topic, e.title);
+      else if (e.target === f.note) add(e.rel, e.source, e.source, e.topic, e.title);
     }
     for (const [family, b] of per) {
       const st = FAMILY_STYLE[family];
@@ -1060,6 +1034,7 @@ export class Galaxy {
       layer.group.visible = layer.fade > 0.02;
       // Per object: the materials are shared, so one fading topic must not hide every topic's trails.
       for (const [family, trail] of layer.lines) for (const line of trail) line.visible = this.layers[family] && layer.fade > 0.05;
+      for (const line of layer.tree) line.visible = layer.fade > 0.05;
       if (layer.target === 0 && layer.fade < 0.03) {
         this.disposeLayer(layer);
         this.revealed.delete(slug);
@@ -1349,10 +1324,10 @@ export class Galaxy {
       if (layer.fade < 0.5) continue;
       const screen: (readonly [number, number] | null)[] = layer.ids.map((_, i) => toScreen(layer.world[i * 3], layer.world[i * 3 + 1], layer.world[i * 3 + 2]));
       for (const l of layer.data.links) {
-        const fam = familyOf(l.rel, l.source, l.target);
-        if (!fam || fam[0] === "part_of" || !this.layers[fam[0]]) continue;
-        const ia = layer.index.get(fam[1]);
-        const ib = layer.index.get(fam[2]);
+        const family = familyOf(l.rel);
+        if (!family || !this.layers[family]) continue;
+        const ia = layer.index.get(l.source);
+        const ib = layer.index.get(l.target);
         if (ia === undefined || ib === undefined || ia === ib) continue;
         const a = screen[ia];
         const b = screen[ib];
@@ -1360,14 +1335,14 @@ export class Galaxy {
         const d = near(a[0], a[1], b[0], b[1]);
         if (d < bestD) {
           bestD = d;
-          const from: LinkEnd = { id: fam[1], title: layer.nodes[ia].title, topic: layer.slug };
-          const to: LinkEnd = { id: fam[2], title: layer.nodes[ib].title, topic: layer.slug };
+          const from: LinkEnd = { id: l.source, title: layer.nodes[ia].title, topic: layer.slug };
+          const to: LinkEnd = { id: l.target, title: layer.nodes[ib].title, topic: layer.slug };
           const w = layer.world;
           best = {
-            target: { kind: "link", family: fam[0], from, to },
-            key: linkKey(fam[0], from, to),
+            target: { kind: "link", family, from, to },
+            key: linkKey(family, from, to),
             segments: [w[ia * 3], w[ia * 3 + 1], w[ia * 3 + 2], w[ib * 3], w[ib * 3 + 1], w[ib * 3 + 2]],
-            color: FAMILY_COLORS[fam[0]],
+            color: FAMILY_COLORS[family],
           };
         }
       }

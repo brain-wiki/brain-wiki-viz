@@ -5,7 +5,7 @@ import type { Controller } from "../controller";
 import { type Branch, folderTree } from "../layout";
 import { FAMILIES, FAMILY_COLORS, shortTitle, type Family, type LinkEnd, type Target } from "../scene/Galaxy";
 import { useStore } from "../store";
-import type { TopicSummary } from "../types";
+import type { Rel, TopicSummary } from "../types";
 import { Inspector } from "./Inspector";
 import { Minimap } from "./Minimap";
 import { Navigator } from "./Navigator";
@@ -19,21 +19,22 @@ const K = keys();
 const KEYMAP = keymap(K);
 
 const FAMILY_LABEL: Record<Family, string> = {
-  part_of: "Folders",
-  depends_on: "Depends on",
-  conflicts_with: "Conflicts",
+  links: "Links",
   supersedes: "Replaces",
-  related_to: "Related",
-  links_to: "Wikilinks",
+  cites: "Sources",
 };
 
 const FAMILY_HINT: Record<Family, string> = {
-  part_of: "Folders: a line from each folder's core to the folder above it",
-  depends_on: "Depends on: pulses run from the prerequisite to what depends on it",
-  conflicts_with: "Conflicts: two notes contradict each other",
+  links: "Links: wikilinks written in the note text",
   supersedes: "Replaces: pulses run from the old note to the one that replaced it",
-  related_to: "Related: a loose association, no direction",
-  links_to: "Wikilinks: links written inside note text",
+  cites: "Sources: a note to the notes it cites as its sources",
+};
+
+/** How a link relation reads in a count, for the links between two topics. */
+const REL_COUNT: Record<Rel, string> = {
+  links_to: "links",
+  superseded_by: "replaced",
+  source: "citations",
 };
 
 function Logo() {
@@ -325,14 +326,11 @@ function MoreMenu({ c }: { c: Controller }) {
   );
 }
 
-/** How a relation reads as a sentence: subject, verb, object, given the pulse direction from → to. */
-const LINK_SENTENCE: Record<Family, { verb: string; subject: "from" | "to"; roles?: [string, string] }> = {
-  depends_on: { verb: "depends on", subject: "to", roles: ["dependent", "prerequisite"] },
-  supersedes: { verb: "supersedes", subject: "to", roles: ["newer", "older"] },
-  conflicts_with: { verb: "conflicts with", subject: "from" },
-  related_to: { verb: "is related to", subject: "from" },
-  links_to: { verb: "links to", subject: "from" },
-  part_of: { verb: "is part of", subject: "from" },
+/** How a relation reads as a sentence: subject, phrase, object, given the pulse direction from → to. */
+const LINK_SENTENCE: Record<Family, { phrase: string; subject: "from" | "to"; roles?: [string, string] }> = {
+  links: { phrase: "links to", subject: "from" },
+  supersedes: { phrase: "supersedes", subject: "to", roles: ["newer", "older"] },
+  cites: { phrase: "cites", subject: "from" },
 };
 
 function LinkCard({ c, target, left, top }: { c: Controller; target: Extract<Target, { kind: "link" }>; left: number; top: number }) {
@@ -353,7 +351,7 @@ function LinkCard({ c, target, left, top }: { c: Controller; target: Extract<Tar
     <div class="hovercard panel" style={{ left: `${left}px`, top: `${top}px` }}>
       <div class="insp-kicker"><span class="swatch" style={{ background: FAMILY_COLORS[target.family] }} /> {FAMILY_LABEL[target.family]}</div>
       {end(subject, s.roles?.[0])}
-      <div class="link-verb" style={{ color: FAMILY_COLORS[target.family] }}>{s.verb}</div>
+      <div class="link-phrase" style={{ color: FAMILY_COLORS[target.family] }}>{s.phrase}</div>
       {end(object, s.roles?.[1])}
       <div class="hover-line link-hint">Click to go to {next.title}</div>
     </div>
@@ -365,12 +363,12 @@ function FlowCard({ c, target, left, top }: { c: Controller; target: Extract<Tar
     target.level === "constellation" ? shortTitle(c.world.constellations.find((x) => x.id === k)?.title ?? k) : c.world.topics.find((x) => x.slug === k)?.title ?? k;
   const f = c.store.state.focus;
   const [a, b] = f.topic === target.b || f.constellation === target.b ? [target.b, target.a] : [target.a, target.b];
-  const rels = Object.entries(target.rels).sort((x, y) => y[1] - x[1]).map(([rel, n]) => `${n} ${rel.replace(/_/g, " ")}`);
+  const rels = Object.entries(target.rels).sort((x, y) => y[1] - x[1]).map(([rel, n]) => `${n} ${REL_COUNT[rel as Rel] ?? rel.replace(/_/g, " ")}`);
   return (
     <div class="hovercard panel" style={{ left: `${left}px`, top: `${top}px` }}>
       <div class="insp-kicker">Links between {target.level === "constellation" ? "groups" : "topics"}</div>
       <div class="hover-title">{name(a)} ↔ {name(b)}</div>
-      <div class="hover-line">{target.total} typed links{rels.length ? `: ${rels.join(" · ")}` : ""}</div>
+      <div class="hover-line">{target.total} {target.total === 1 ? "link" : "links"}{rels.length > 1 || !target.rels.links_to ? `: ${rels.join(" · ")}` : ""}</div>
       <div class="hover-line link-hint">Click to fly to {name(b)}</div>
     </div>
   );

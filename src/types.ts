@@ -1,19 +1,15 @@
 // Payload shapes from the viz server (design doc 12 §6).
 
-export type Flag = "conflict" | "stale" | "orphan" | "unverified" | "lint_error";
+export type Flag = "superseded" | "stale" | "orphan" | "lint_error";
 
-export const FLAGS: Flag[] = ["conflict", "stale", "unverified", "orphan", "lint_error"];
+/** Display order, most actionable first; the star shader indexes its colours by it. */
+export const FLAGS: Flag[] = ["stale", "superseded", "orphan", "lint_error"];
 
-export type Rel =
-  | "part_of"
-  | "has_part"
-  | "depends_on"
-  | "enables"
-  | "conflicts_with"
-  | "supersedes"
-  | "superseded_by"
-  | "related_to"
-  | "links_to";
+/**
+ * How one note links to another: a body wikilink, `bw-superseded_by` (old note -> new note),
+ * or `bw-sources` (citing note -> cited note or episode).
+ */
+export type Rel = "links_to" | "superseded_by" | "source";
 
 export interface Constellation {
   id: string;
@@ -78,9 +74,6 @@ export interface NodeData {
   degree: number;
   /** How long the note is, in lines: what its size on the map shows. */
   lines: number;
-  claims: number;
-  superseded_claims: number;
-  unverified_claims: number;
   flags: Flag[];
 }
 
@@ -88,8 +81,6 @@ export interface Link {
   source: string;
   target: string;
   rel: Rel;
-  typed?: boolean;
-  guard?: boolean;
 }
 
 export interface ExternalLink extends Link {
@@ -109,18 +100,23 @@ export interface TopicData {
   external: ExternalLink[];
 }
 
-export interface Claim {
+/** A link the note holds, as read from that note; unresolved links have no id, title or path. */
+export interface Outlink {
+  relation: "superseded_by" | "links_to" | "cites";
+  /** The link text as written. */
+  target: string;
   id: string | null;
-  text: string;
-  status: string;
-  /** local, external, or unknown; anything but local reads as unverified. */
-  inputs?: string | null;
+  title: string | null;
+  path: string | null;
+  resolved: boolean;
 }
 
+/** A note that links here, as read from this note: it `supersedes` that note, or that note links to or cites this one. */
 export interface Backlink {
+  id: string;
   title: string;
   path: string;
-  relation: string;
+  relation: "supersedes" | "linked_from" | "cited_by";
 }
 
 export interface NoteDetail {
@@ -135,9 +131,9 @@ export interface NoteDetail {
   updated: string | null;
   banners?: string[];
   summary?: string | null;
-  claims?: Claim[];
+  outlinks?: Outlink[];
   backlinks?: Backlink[];
-  /** Exported files carry no claim text. */
+  /** An exported file has only the map's data: no summary, links, or body. */
   partial?: boolean;
   /** Frontmatter, the body as Markdown, and wikilink text -> visible target, for the preview. */
   properties?: Record<string, unknown>;

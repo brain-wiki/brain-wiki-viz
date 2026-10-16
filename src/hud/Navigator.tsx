@@ -3,7 +3,7 @@ import type { Controller } from "../controller";
 import { shortTitle } from "../scene/Galaxy";
 import { useStore } from "../store";
 import { FLAGS, type Flag, type TopicSummary } from "../types";
-import { Dot, FLAG_COLOR, FLAG_LABEL, fmt, Icon } from "./ui";
+import { Dot, FLAG_COLOR, FLAG_HINT, FLAG_LABEL, fmt, Icon } from "./ui";
 
 export type Sort = "size" | "health" | "recent" | "name";
 
@@ -149,7 +149,7 @@ function HealthTab({ c }: { c: Controller }) {
   const data = useStore(c.store, (s) => s.healthData);
   const error = useStore(c.store, (s) => s.healthError);
   const health = useStore(c.store, (s) => s.health);
-  const [open, setOpen] = useState<Flag | null>("conflict");
+  const [open, setOpen] = useState<Flag | null>("stale");
   const titles = useMemo(() => new Map(c.world.topics.map((t) => [t.slug, t])), [c]);
   if (!data && error) return <div class="empty">Could not find notes with issues: {error}</div>;
   if (!data) return <div class="empty">Finding notes with issues…</div>;
@@ -163,7 +163,7 @@ function HealthTab({ c }: { c: Controller }) {
       {flags.length === 0 && <div class="empty">No issues found.</div>}
       {flags.map((f) => (
         <div class="flag-group" key={f}>
-          <button class="flag-head" onClick={() => setOpen(open === f ? null : f)} aria-expanded={open === f}>
+          <button class="flag-head" onClick={() => setOpen(open === f ? null : f)} aria-expanded={open === f} title={FLAG_HINT[f]}>
             <span class={`chev${open === f ? " open" : ""}`}><Icon name="chevron" /></span>
             <Dot color={FLAG_COLOR[f]} />
             <span class="tree-title">{FLAG_LABEL[f]}</span>

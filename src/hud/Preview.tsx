@@ -53,12 +53,10 @@ export function Preview({ c }: { c: Controller }) {
 }
 
 const HIDDEN = new Set(["title"]);
-const CLAIMS = new Set(["bw-claims", "bw-claims-superseded"]);
-const CLAIM_META = /\s*\{([^{}]*)\}\s*$/;
 
 /**
  * Obsidian's properties table: one row per frontmatter key; lists and tags as chips. As in
- * Obsidian, wikilinks in values (relations such as `bw-part_of`) open the note they point to.
+ * Obsidian, wikilinks in values (such as `bw-superseded_by` and each of `bw-sources`) open the note they point to.
  */
 function Properties({ props, links, onOpen }: { props: Record<string, unknown>; links: Record<string, LinkTarget>; onOpen: (t: LinkTarget) => void }) {
   const ctx = useMemo(() => linkContext(links, onOpen), [links, onOpen]);
@@ -83,7 +81,7 @@ function value(key: string, v: unknown, ctx: Ctx) {
   if (Array.isArray(v)) {
     return v.map((x, i) => (
       <span key={i} class={key === "tags" ? "md-tag" : "md-chip"}>
-        {key === "tags" ? `#${String(x)}` : item(key, String(x), ctx)}
+        {key === "tags" ? `#${String(x)}` : linkedText(String(x), ctx)}
       </span>
     ));
   }
@@ -96,13 +94,5 @@ function value(key: string, v: unknown, ctx: Ctx) {
       </a>
     );
   }
-  return item(key, s, ctx);
-}
-
-/** One value with live wikilinks; a claim's `{id: …}` block moves to a tooltip. */
-function item(key: string, s: string, ctx: Ctx) {
-  const meta = CLAIMS.has(key) ? CLAIM_META.exec(s) : null;
-  if (!meta) return linkedText(s, ctx);
-  const text = linkedText(s.slice(0, meta.index), ctx);
-  return <span title={meta[1]}>{key === "bw-claims-superseded" ? <s>{text}</s> : text}</span>;
+  return linkedText(s, ctx);
 }

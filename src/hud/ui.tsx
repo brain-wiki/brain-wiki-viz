@@ -2,19 +2,26 @@ import type { ComponentChildren } from "preact";
 import type { Flag } from "../types";
 
 export const FLAG_LABEL: Record<Flag, string> = {
-  conflict: "Conflicts",
-  stale: "May be outdated",
-  unverified: "Unverified facts",
+  stale: "Stale links",
+  superseded: "Superseded",
   orphan: "Orphans",
   lint_error: "Format problems",
 };
 
+/** Keep in step with flagColor in scene/shaders.ts. */
 export const FLAG_COLOR: Record<Flag, string> = {
-  conflict: "#ff3b4f",
   stale: "#ffad38",
-  unverified: "#bd85ff",
+  superseded: "#bd85ff",
   orphan: "#9aa6c4",
   lint_error: "#ff6bc6",
+};
+
+/** What each flag means, for tooltips. */
+export const FLAG_HINT: Record<Flag, string> = {
+  stale: "Links to a superseded or archived note it did not replace",
+  superseded: "Replaced by a newer note",
+  orphan: "No other note links here",
+  lint_error: "The file has format problems",
 };
 
 export function Dot({ color, size = 8 }: { color: string; size?: number }) {

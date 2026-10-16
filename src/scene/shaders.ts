@@ -114,10 +114,10 @@ export function starMaterial(): THREE.ShaderMaterial {
         varying float vFlag;
         varying float vState;
         vec3 flagColor(float f) {
-          if (f < 1.5) return vec3(1.0, 0.22, 0.28);   // conflict
-          if (f < 2.5) return vec3(1.0, 0.68, 0.22);   // stale
-          if (f < 3.5) return vec3(0.74, 0.52, 1.0);   // unverified
-          if (f < 4.5) return vec3(0.62, 0.68, 0.8);   // orphan
+          // Indexed by FLAGS (types.ts) + 1; keep in step with FLAG_COLOR (hud/ui.tsx).
+          if (f < 1.5) return vec3(1.0, 0.68, 0.22);   // stale
+          if (f < 2.5) return vec3(0.74, 0.52, 1.0);   // superseded
+          if (f < 3.5) return vec3(0.62, 0.68, 0.8);   // orphan
           return vec3(1.0, 0.42, 0.78);                // lint error
         }
         void main() {
