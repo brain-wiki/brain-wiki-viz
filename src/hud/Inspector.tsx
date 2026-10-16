@@ -280,11 +280,12 @@ function NoteCard({ c, id, slug }: { c: Controller; id: string; slug: string }) 
   const order = Object.keys(OUT_LABEL);
   const groups = [...grouped].sort(([a], [b]) => order.indexOf(a) - order.indexOf(b));
   const row = (r: LinkRow, meta?: string) => (
-    <button class="row" key={`${r.relation}${r.id ?? r.title}`} disabled={!r.id || !r.topic} title={r.id ? undefined : "No note by this name"} onClick={() => r.id && c.openNote(r.id, r.topic)}>
+    <button class="row" key={`${r.relation}${r.id ?? r.title}`} disabled={!r.id || !r.topic} title={!r.id ? "No note by this name" : !r.topic ? "Not in a topic on this map, such as an inbox episode" : undefined} onClick={() => r.id && c.openNote(r.id, r.topic)}>
       <span class="row-title">{r.title}</span>
       {meta && <span class="row-meta">{meta}</span>}
       {!meta && r.topic && r.topic !== slug && <span class="row-meta">{c.world.topics.find((x) => x.slug === r.topic)?.title ?? r.topic}</span>}
       {!r.id && <span class="row-meta">not found</span>}
+      {r.id && !r.topic && <span class="row-meta">not on the map</span>}
     </button>
   );
   const path = note?.path ?? node?.path;
