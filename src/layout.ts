@@ -1,4 +1,4 @@
-// Deterministic, local layouts (design doc 12 §3): the same brain always draws the same map,
+// Deterministic, local layouts (visualizer.md §3): the same brain always draws the same map,
 // and no layout spans the whole brain.
 import { packEnclose } from "d3-hierarchy";
 import type { Constellation, TopicData, TopicSummary } from "./types";
@@ -207,7 +207,7 @@ function shortLabel(b: Branch, branches: Map<string, Branch>): string {
 }
 
 /**
- * The folder tree inside a topic (design doc 12 §3): the map's hierarchy always follows the
+ * The folder tree inside a topic (visualizer.md §3): the map's hierarchy always follows the
  * folders, as Obsidian shows them. A sub-folder is a branch; its folder note (`x/x.md`,
  * `x/index.md`, `x/readme.md`) is the branch's star.
  */
@@ -396,7 +396,7 @@ function orbit(core: number, radii: number[], inbound: boolean): { at: [number, 
 const rotate = ([x, y]: [number, number], t: number): [number, number] => [x * Math.cos(t) - y * Math.sin(t), x * Math.sin(t) + y * Math.cos(t)];
 
 /**
- * Notes of one topic (design doc 12 §3), gathered by gravity and linked by folder. Each folder
+ * Notes of one topic (visualizer.md §3), gathered by gravity and linked by folder. Each folder
  * is a star cluster on its own plane, one tier farther back per nesting level: the folder note at
  * its core, long notes sinking toward it, a sparse halo of short ones. Its sub-folders orbit that
  * core, and a line runs from the core to each of theirs, so the tree reads as links across the

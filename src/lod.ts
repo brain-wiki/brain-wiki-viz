@@ -1,4 +1,4 @@
-// Map-style level of detail (design doc 12 §2): detail appears by on-screen size.
+// Map-style level of detail (visualizer.md §2): detail appears by on-screen size.
 
 export const REVEAL_ON_PX = 110;
 export const REVEAL_OFF_PX = 80;

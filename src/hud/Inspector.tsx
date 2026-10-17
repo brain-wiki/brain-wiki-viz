@@ -3,6 +3,7 @@ import type { Controller } from "../controller";
 import { FAMILY_COLORS, type Family } from "../scene/Galaxy";
 import { type Branch, folderTree } from "../layout";
 import { useStore } from "../store";
+import { ConnectionCard } from "./Connection";
 import { FLAGS, type Backlink, type NodeData, type NoteDetail, type Outlink, type Rel, type TopicData } from "../types";
 import { Chip, Dot, FLAG_COLOR, FLAG_LABEL, fmt, Icon } from "./ui";
 
@@ -378,8 +379,10 @@ function NoteCard({ c, id, slug }: { c: Controller; id: string; slug: string }) 
 
 export function Inspector({ c }: { c: Controller }) {
   const focus = useStore(c.store, (s) => s.focus);
-  const card =
-    focus.note && focus.topic ? (
+  const connection = useStore(c.store, (s) => s.connection);
+  const card = connection ? (
+    <ConnectionCard c={c} t={connection} />
+  ) : focus.note && focus.topic ? (
       <NoteCard c={c} id={focus.note} slug={focus.topic} />
     ) : focus.topic ? (
       <TopicCard c={c} slug={focus.topic} />
@@ -390,13 +393,19 @@ export function Inspector({ c }: { c: Controller }) {
     <aside class={`panel insp open${card ? "" : " idle"}`} aria-label="Details">
       <div class="insp-head">
         <span>Details</span>
-        {card && (
-          <button class="icon-btn" onClick={() => c.up()} title="Up one level (Esc)" aria-label="Up one level">
+        {connection ? (
+          <button class="icon-btn" onClick={() => c.closeConnection()} title="Close the connection (Esc)" aria-label="Close the connection">
             <Icon name="close" />
           </button>
+        ) : (
+          card && (
+            <button class="icon-btn" onClick={() => c.up()} title="Up one level (Esc)" aria-label="Up one level">
+              <Icon name="close" />
+            </button>
+          )
         )}
       </div>
-      <div class="insp-body">{card ?? <div class="empty small">Click a topic or a star to see its details here.</div>}</div>
+      <div class="insp-body">{card ?? <div class="empty small">Click a topic, a star, or a link to see its details here.</div>}</div>
     </aside>
   );
 }

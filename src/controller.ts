@@ -7,11 +7,15 @@ import { Store } from "./store";
 import type { Health, NoteDetail, RunSummary, SearchHit, TopicData, World } from "./types";
 
 export type NavTab = "atlas" | "health" | "changes";
+/** A clicked link between two notes, or the links between two topics or groups. */
+export type Connection = Extract<Target, { kind: "link" | "flow" }>;
 
 export interface AppState {
   world: World;
   focus: Focus;
   hover: { target: Target; x: number; y: number } | null;
+  /** The connection shown in the Details panel, in place of the focused place's details. */
+  connection: Connection | null;
   note: NoteDetail | null;
   topicData: TopicData | null;
   /** Why the focused note or topic could not be shown; null while it loads or once it has. */
@@ -67,6 +71,7 @@ export class Controller {
       world,
       focus: {},
       hover: null,
+      connection: null,
       note: null,
       topicData: null,
       noteError: null,
@@ -187,6 +192,7 @@ export class Controller {
    * browser's own history records nothing (`none`).
    */
   focus(f: Focus, history_: "push" | "replace" | "none" = "push", fly = true): void {
+    if (history_ !== "replace") this.closeConnection(); // going somewhere; scrolling keeps it
     if (f.topic && !f.constellation) f = { ...f, constellation: this.constellationOf.get(f.topic) };
     const prev = this.store.state.focus;
     this.store.set({ focus: f, hover: null });
@@ -236,6 +242,7 @@ export class Controller {
     if (s.historyOpen) return this.store.set({ historyOpen: false });
     if (s.helpOpen) return this.store.set({ helpOpen: false });
     if (s.previewOpen) return this.store.set({ previewOpen: false });
+    if (s.connection) return this.closeConnection();
     if (s.run) return this.setRun(null);
     if (levelOf(s.focus) === "galaxy") return this.galaxy?.resetView();
     void this.levelUp();
@@ -244,7 +251,7 @@ export class Controller {
   /** Where Ctrl/⌘+↑ came from, so Ctrl/⌘+↓ can go back down the same way. */
   private climbed: Focus[] = [];
 
-  /** Ctrl/⌘+↑: one nesting level up, through folders and parent topics (design doc 12 §5). */
+  /** Ctrl/⌘+↑: one nesting level up, through folders and parent topics (visualizer.md §5). */
   async levelUp(): Promise<void> {
     const f = this.store.state.focus;
     const data = f.topic ? await this.source.topic(f.topic) : null;
@@ -288,15 +295,8 @@ export class Controller {
     if (t.kind === "constellation") this.focus({ constellation: t.id });
     else if (t.kind === "topic") this.focus({ topic: t.slug });
     else if (t.kind === "note") this.openNote(t.id, t.topic);
-    else if (t.kind === "link") {
-      // Go to the end you are not already on.
-      const end = this.store.state.focus.note === t.to.id ? t.from : t.to;
-      this.focus({ topic: end.topic, note: end.id });
-    } else if (t.kind === "flow") {
-      const f = this.store.state.focus;
-      if (t.level === "constellation") this.focus({ constellation: f.constellation === t.b ? t.a : t.b });
-      else this.focus({ topic: f.topic === t.b ? t.a : t.b });
-    } else this.toast(`${this.world.episodes.count} session captures wait in the inbox. Ask your agent to consolidate them.`);
+    else if (t.kind === "link" || t.kind === "flow") this.showConnection(t);
+    else this.toast(`${this.world.episodes.count} session captures wait in the inbox. Ask your agent to consolidate them.`);
   }
 
   /** Scrolling moves between levels like zooming a map: in enters, out leaves, panning switches. */
@@ -305,6 +305,18 @@ export class Controller {
     const { focus, progress } = viewFocus(cur, sample);
     if (Math.abs(progress - this.store.state.zoom) > 0.02) this.store.set({ zoom: progress });
     if (userDriven && focusToHash(focus) !== focusToHash(cur)) this.focus(focus, "replace", false);
+  }
+
+  /** Show a connection in the Details panel and keep it lit on the map; the camera stays put. */
+  showConnection(t: Connection): void {
+    this.store.set({ connection: t, previewOpen: false });
+    this.galaxy?.pin(t);
+  }
+
+  closeConnection(): void {
+    if (!this.store.state.connection) return;
+    this.store.set({ connection: null });
+    this.galaxy?.pin(null);
   }
 
   /** Select a note and open its preview: what clicking a note means everywhere in the UI. */

@@ -13,16 +13,11 @@ import { Palette } from "./Palette";
 import { Preview } from "./Preview";
 import { bindingFor, keymap, type Binding, type Section } from "../keymap";
 import { keys } from "../util/keys";
-import { Dot, FLAG_COLOR, FLAG_LABEL, fmt, Icon, Kbd } from "./ui";
+import { Dot, FAMILY_LABEL, FLAG_COLOR, FLAG_LABEL, fmt, Icon, Kbd, LINK_SENTENCE, REL_COUNT } from "./ui";
 
 const K = keys();
 const KEYMAP = keymap(K);
 
-const FAMILY_LABEL: Record<Family, string> = {
-  links: "Links",
-  supersedes: "Replaces",
-  cites: "Sources",
-};
 
 const FAMILY_HINT: Record<Family, string> = {
   links: "Links: wikilinks written in the note text",
@@ -30,12 +25,6 @@ const FAMILY_HINT: Record<Family, string> = {
   cites: "Sources: a note to the notes it cites as its sources",
 };
 
-/** How a link relation reads in a count, for the links between two topics. */
-const REL_COUNT: Record<Rel, string> = {
-  links_to: "links",
-  superseded_by: "replaced",
-  source: "citations",
-};
 
 function Logo() {
   return (
@@ -75,7 +64,7 @@ function Breadcrumb({ c }: { c: Controller }) {
     crumbs.push({ label: topic.title, color: topic.color, go: () => c.focus({ topic: topic.slug }), current: !focus.note });
   }
   if (focus.note && data && data.slug === focus.topic) {
-    // The folders between the topic and the note (design doc 12 §3).
+    // The folders between the topic and the note (visualizer.md §3).
     const { branches, folderOf } = folderTree(data);
     const path: Branch[] = [];
     for (let b = branches.get(folderOf.get(focus.note) ?? ""); b && b.key !== ""; b = b.parent === null ? undefined : branches.get(b.parent)) path.unshift(b);
@@ -327,11 +316,6 @@ function MoreMenu({ c }: { c: Controller }) {
 }
 
 /** How a relation reads as a sentence: subject, phrase, object, given the pulse direction from → to. */
-const LINK_SENTENCE: Record<Family, { phrase: string; subject: "from" | "to"; roles?: [string, string] }> = {
-  links: { phrase: "links to", subject: "from" },
-  supersedes: { phrase: "supersedes", subject: "to", roles: ["newer", "older"] },
-  cites: { phrase: "cites", subject: "from" },
-};
 
 function LinkCard({ c, target, left, top }: { c: Controller; target: Extract<Target, { kind: "link" }>; left: number; top: number }) {
   const s = LINK_SENTENCE[target.family];
@@ -345,15 +329,13 @@ function LinkCard({ c, target, left, top }: { c: Controller; target: Extract<Tar
       </div>
     );
   };
-  const here = c.store.state.focus.note;
-  const next = here === target.to.id ? target.from : target.to;
   return (
     <div class="hovercard panel" style={{ left: `${left}px`, top: `${top}px` }}>
       <div class="insp-kicker"><span class="swatch" style={{ background: FAMILY_COLORS[target.family] }} /> {FAMILY_LABEL[target.family]}</div>
       {end(subject, s.roles?.[0])}
       <div class="link-phrase" style={{ color: FAMILY_COLORS[target.family] }}>{s.phrase}</div>
       {end(object, s.roles?.[1])}
-      <div class="hover-line link-hint">Click to go to {next.title}</div>
+      <div class="hover-line link-hint">Click to see where the link is written</div>
     </div>
   );
 }
@@ -369,7 +351,7 @@ function FlowCard({ c, target, left, top }: { c: Controller; target: Extract<Tar
       <div class="insp-kicker">Links between {target.level === "constellation" ? "groups" : "topics"}</div>
       <div class="hover-title">{name(a)} ↔ {name(b)}</div>
       <div class="hover-line">{target.total} {target.total === 1 ? "link" : "links"}{rels.length > 1 || !target.rels.links_to ? `: ${rels.join(" · ")}` : ""}</div>
-      <div class="hover-line link-hint">Click to fly to {name(b)}</div>
+      <div class="hover-line link-hint">Click to see these links</div>
     </div>
   );
 }

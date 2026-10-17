@@ -236,6 +236,8 @@ export class Galaxy {
   private lastLod = 0;
   private pointer = { x: 0, y: 0, down: false, dx: 0, dy: 0, moved: false, dirty: false, inside: false };
   private hovered: string | null = null;
+  /** The connection the user clicked: it stays lit while its panel is open. */
+  private pinned: Picked | null = null;
   private flowHits: FlowHit[] = [];
   private focusHits: { family: Family; from: LinkEnd; to: LinkEnd; a: number[]; b: number[] }[] = [];
   private hoverLine: LineSegments2 | null = null;
@@ -695,7 +697,7 @@ export class Galaxy {
       }
       lines.set(family, trail);
     }
-    // The folder tree (design doc 12 §3): a link from each folder's core to its parent's.
+    // The folder tree (visualizer.md §3): a link from each folder's core to its parent's.
     let tree: LineSegments2[] = [];
     if (placement.skeleton.length) {
       const shade: number[] = [];
@@ -1229,6 +1231,7 @@ export class Galaxy {
     el.addEventListener("pointerleave", () => {
       this.pointer.inside = false;
       this.hovered = null;
+      this.setHighlight(this.pinned);
       this.events.hover(null, 0, 0);
     });
     el.addEventListener("pointerdown", (e) => {
@@ -1242,7 +1245,9 @@ export class Galaxy {
       this.pointer.down = false;
       if (!click) return;
       const r = el.getBoundingClientRect();
-      this.events.select(this.pick(e.clientX - r.left, e.clientY - r.top));
+      const picked = this.pickDetailed(e.clientX - r.left, e.clientY - r.top);
+      if (picked?.target.kind === "link" || picked?.target.kind === "flow") this.pinned = picked;
+      this.events.select(picked?.target ?? null);
     });
     el.addEventListener("contextmenu", (e) => e.preventDefault());
   }
@@ -1254,7 +1259,7 @@ export class Galaxy {
     this.renderer.domElement.style.cursor = picked ? "pointer" : "";
     if (key !== this.hovered) {
       this.hovered = key;
-      this.setHighlight(picked);
+      this.setHighlight(picked ?? this.pinned);
     }
     this.events.hover(picked?.target ?? null, this.pointer.x, this.pointer.y);
   }
@@ -1290,6 +1295,42 @@ export class Galaxy {
 
   pick(x: number, y: number): Target | null {
     return this.pickDetailed(x, y)?.target ?? null;
+  }
+
+  /**
+   * Keep a link or flow lit, as when it is clicked (null lets it go). One chosen from a panel
+   * is found among the lines on screen; if it is not drawn, only its ends light up.
+   */
+  pin(t: Target | null): void {
+    const key = (x: Target) => (x.kind === "link" ? `l:${x.family}:${x.from.id}>${x.to.id}` : x.kind === "flow" ? `f:${x.a}|${x.b}` : "");
+    // A click pinned it already, with the segments it was picked by.
+    if (!(t && this.pinned && key(this.pinned.target) === key(t))) {
+      this.pinned = t && (t.kind === "link" || t.kind === "flow") ? { target: t, key: key(t), ...this.linesOf(t) } : null;
+    }
+    if (!this.hovered) this.setHighlight(this.pinned);
+  }
+
+  /** Where a link or flow is drawn now: its segments and color, or nothing when it is not. */
+  private linesOf(t: Target): { segments?: number[]; color?: string } {
+    if (t.kind === "link") {
+      const hit = this.focusHits.find((h) => h.family === t.family && h.from.id === t.from.id && h.to.id === t.to.id);
+      if (hit) return { segments: [...hit.a, ...hit.b], color: FAMILY_COLORS[t.family] };
+      for (const layer of this.revealed.values()) {
+        const ia = layer.index.get(t.from.id);
+        const ib = layer.index.get(t.to.id);
+        if (ia === undefined || ib === undefined) continue;
+        const w = layer.world;
+        return { segments: [w[ia * 3], w[ia * 3 + 1], w[ia * 3 + 2], w[ib * 3], w[ib * 3 + 1], w[ib * 3 + 2]], color: FAMILY_COLORS[t.family] };
+      }
+    } else if (t.kind === "flow") {
+      const h = this.flowHits.find((x) => (x.a === t.a && x.b === t.b) || (x.a === t.b && x.b === t.a));
+      if (h) {
+        const segments: number[] = [];
+        for (let j = 0; j < h.points.length - 1; j++) segments.push(...h.points[j].toArray(), ...h.points[j + 1].toArray());
+        return { segments };
+      }
+    }
+    return {};
   }
 
   /**

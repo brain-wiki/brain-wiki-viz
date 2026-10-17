@@ -1,4 +1,4 @@
-// Payload shapes from the viz server (design doc 12 §6).
+// Payload shapes from the viz server (visualizer.md §6).
 
 export type Flag = "superseded" | "stale" | "orphan" | "lint_error";
 

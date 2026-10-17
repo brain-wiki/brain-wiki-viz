@@ -1,4 +1,4 @@
-// The keymap (design doc 12 §4): one table drives both the key handler and the shortcuts sheet,
+// The keymap (visualizer.md §4): one table drives both the key handler and the shortcuts sheet,
 // so what the sheet says is what the keys do. Moving follows the breadcrumb:
 // Overview › group › topic › folder › note.
 import type { Controller } from "./controller";

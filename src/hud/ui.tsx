@@ -1,5 +1,6 @@
 import type { ComponentChildren } from "preact";
-import type { Flag } from "../types";
+import type { Family } from "../scene/Galaxy";
+import type { Flag, Rel } from "../types";
 
 export const FLAG_LABEL: Record<Flag, string> = {
   stale: "Stale links",
@@ -22,6 +23,26 @@ export const FLAG_HINT: Record<Flag, string> = {
   superseded: "Replaced by a newer note",
   orphan: "No other note links here",
   lint_error: "The file has format problems",
+};
+
+export const FAMILY_LABEL: Record<Family, string> = {
+  links: "Links",
+  supersedes: "Replaces",
+  cites: "Sources",
+};
+
+/** How a link relation reads in a count, for the links between two topics. */
+export const REL_COUNT: Record<Rel, string> = {
+  links_to: "links",
+  superseded_by: "replaced",
+  source: "citations",
+};
+
+/** A link read as a sentence: who is the subject, and the roles when direction matters. */
+export const LINK_SENTENCE: Record<Family, { phrase: string; subject: "from" | "to"; roles?: [string, string] }> = {
+  links: { phrase: "links to", subject: "from" },
+  supersedes: { phrase: "supersedes", subject: "to", roles: ["newer", "older"] },
+  cites: { phrase: "cites", subject: "from" },
 };
 
 export function Dot({ color, size = 8 }: { color: string; size?: number }) {
