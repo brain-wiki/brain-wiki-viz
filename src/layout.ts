@@ -179,12 +179,12 @@ export interface FolderTree {
 
 const FOLDER_NOTES = new Set(["index", "_index", "readme"]);
 
-/** The folder a topic lives in: as the server says, else its hub's folder, else the common one. */
+/** The folder a topic lives in: as the server says, else its topic page's folder, else the common one. */
 export function topicFolder(topic: TopicData): string {
   if (topic.path) return topic.path;
   const dir = (p: string) => p.slice(0, Math.max(0, p.lastIndexOf("/")));
-  const hub = topic.nodes.find((n) => n.id === topic.hub);
-  if (hub) return dir(hub.path);
+  const page = topic.nodes.find((n) => n.id === topic.page);
+  if (page) return dir(page.path);
   const dirs = topic.nodes.map((n) => dir(n.path).split("/"));
   if (!dirs.length) return "";
   const common: string[] = [];
@@ -215,7 +215,7 @@ export function folderTree(topic: TopicData): FolderTree {
   const root = topicFolder(topic);
   const prefix = root ? `${root}/` : "";
   const branches = new Map<string, Branch>();
-  branches.set("", { key: "", parent: null, title: topic.title, label: topic.title, note: topic.hub, depth: 0, count: 0 });
+  branches.set("", { key: "", parent: null, title: topic.title, label: topic.title, note: topic.page, depth: 0, count: 0 });
   const ensure = (key: string): Branch => {
     let b = branches.get(key);
     if (!b) {
@@ -416,7 +416,7 @@ export function topicLayout(topic: TopicData, radius: number): StarPlacement {
   for (const [id, key] of folderOf) notesIn.set(key, [...(notesIn.get(key) ?? []), id]);
   const build = (key: string): Body => {
     const b = branches.get(key)!;
-    const core = key === "" ? topic.hub : b.note;
+    const core = key === "" ? topic.page : b.note;
     const notes = (notesIn.get(key) ?? [])
       .map((id) => ({ id, r: Math.sqrt(noteWeight(byId.get(id)?.lines ?? 0)) }))
       .sort((p, q) => Number(q.id === core) - Number(p.id === core) || q.r - p.r || p.id.localeCompare(q.id));
@@ -472,7 +472,7 @@ export function topicLayout(topic: TopicData, radius: number): StarPlacement {
   };
   place(root, 0, 0, null);
 
-  const ids = [...folderOf.keys()].filter((id) => pos.has(id)).sort((a, b) => Number(b === topic.hub) - Number(a === topic.hub));
+  const ids = [...folderOf.keys()].filter((id) => pos.has(id)).sort((a, b) => Number(b === topic.page) - Number(a === topic.page));
   const positions = new Float32Array(ids.length * 3);
   ids.forEach((id, i) => positions.set(pos.get(id)!, i * 3));
   const segments: number[] = [];

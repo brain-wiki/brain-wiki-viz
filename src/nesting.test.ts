@@ -19,10 +19,10 @@ const work: TopicData = {
   slug: "work",
   title: "Work",
   color: "#888",
-  hub: "index",
+  page: "index",
   path: "topics/work",
   nodes: paths.map((rel) => ({
-    id: rel.split("/").pop()!, title: rel, path: `topics/work/${rel}.md`, kind: rel === "index" ? "hub" : "note",
+    id: rel.split("/").pop()!, title: rel, path: `topics/work/${rel}.md`, kind: rel === "index" ? "topic" : "note",
     topic: "work", type: null, status: "active", updated: null, aliases: [], degree: 1, lines: 20,
     flags: [],
   })),

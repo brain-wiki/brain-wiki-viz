@@ -144,7 +144,7 @@ function recency(updated: string | null | undefined, now: number): number {
   return 0.45 + 0.55 * Math.exp(-days / 75);
 }
 
-/** "A · B · C · …" titles shortened to their first topic (the hub topic, else the largest), for labels on the map. */
+/** "A · B · C · …" titles shortened to their first topic (the central topic, else the largest), for labels on the map. */
 export function shortTitle(title: string): string {
   return title.split(" · ")[0];
 }
@@ -641,13 +641,13 @@ export class Galaxy {
     const world = new Float32Array(count * 3);
     const [tr, tg, tb] = rgb(data.color);
     nodes.forEach((nd, i) => {
-      const hub = nd.id === data.hub;
+      const page = nd.id === data.page;
       const ghost = nd.status === "superseded" || nd.status === "archived";
-      const mix = hub ? 0.25 : 0.55;
+      const mix = page ? 0.25 : 0.55;
       colors.set([tr * (1 - mix) + mix, tg * (1 - mix) + mix, tb * (1 - mix) + mix], i * 3);
       if (ghost) colors.set([0.55, 0.58, 0.66], i * 3);
       // Size shows how much a note holds (the fourth root of its lines, as its room in the layout).
-      sizes[i] = hub ? 8 : Math.min(7.2, Math.max(2.2, 1.2 + 0.8 * Math.sqrt(noteWeight(nd.lines ?? 0))));
+      sizes[i] = page ? 8 : Math.min(7.2, Math.max(2.2, 1.2 + 0.8 * Math.sqrt(noteWeight(nd.lines ?? 0))));
       alphas[i] = (ghost ? 0.32 : 1) * recency(nd.updated, this.now);
       const first = FLAGS.findIndex((f) => nd.flags.includes(f));
       flags[i] = first < 0 ? 0 : first + 1;
@@ -1196,15 +1196,15 @@ export class Galaxy {
         const starPx = (layer.sizes[i] * scale) / Math.max(d, 1);
         const hoverEnd = this.hoverEnds.has(nd.id);
         const state = Math.max(this.neighborhood.get(nd.id) ?? 0, hoverEnd ? 2 : 0);
-        const hub = nd.id === layer.data.hub;
-        if (starPx < 3.5 && state < 2 && !hub) return;
+        const page = nd.id === layer.data.page;
+        if (starPx < 3.5 && state < 2 && !page) return;
         const flagged = nd.flags.length > 0;
-        const priority = hoverEnd ? 12500 : state === 3 ? 12000 : state === 2 ? 8500 : hub ? 6500 : (flagged ? 2500 : 1000) + nd.degree * 20 + starPx * 10;
+        const priority = hoverEnd ? 12500 : state === 3 ? 12000 : state === 2 ? 8500 : page ? 6500 : (flagged ? 2500 : 1000) + nd.degree * 20 + starPx * 10;
         cands.push({
           key: `n:${nd.id}`,
-          kind: hub ? "hub" : "note",
+          kind: page ? "page" : "note",
           text: nd.title,
-          sub: hub ? "index" : undefined,
+          sub: page ? "topic page" : undefined,
           color: flagged ? "#ff6b7a" : undefined,
           pos: v.clone(),
           priority,

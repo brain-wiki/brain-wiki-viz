@@ -393,7 +393,7 @@ function HoverCard({ c }: { c: Controller }) {
     color = t?.color ?? color;
     title = n?.title ?? "Note";
     if (n) {
-      lines = [[n.kind === "hub" ? "topic index" : n.type, n.status !== "active" ? n.status : null, `${n.degree} links`].filter(Boolean).join(" · ")];
+      lines = [[n.kind === "topic" ? "topic page" : n.type, n.status !== "active" ? n.status : null, `${n.degree} links`].filter(Boolean).join(" · ")];
       flags = n.flags;
     }
   } else {

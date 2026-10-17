@@ -18,7 +18,7 @@ function folderNote(branches: Map<string, Branch>, key: string | null): string |
 export function nestUp(f: Focus, places: Places, data: TopicData | null): Focus | null {
   const constellation = f.constellation;
   if (f.note && f.topic) {
-    if (data && data.slug === f.topic && f.note !== data.hub) {
+    if (data && data.slug === f.topic && f.note !== data.page) {
       const { branches, folderOf } = folderTree(data);
       const key = folderOf.get(f.note) ?? "";
       const own = branches.get(key);
@@ -55,7 +55,7 @@ export function nestChildren(f: Focus, places: Places, data: TopicData | null): 
   if (!data || data.slug !== f.topic) return [];
   const { branches, folderOf } = folderTree(data);
   let key: string;
-  if (!f.note || f.note === data.hub) key = "";
+  if (!f.note || f.note === data.page) key = "";
   else {
     const k = folderOf.get(f.note);
     if (k === undefined || branches.get(k)?.note !== f.note) return []; // a plain note
@@ -68,7 +68,7 @@ export function nestChildren(f: Focus, places: Places, data: TopicData | null): 
     if (note) items.push({ focus: { topic: f.topic, note }, size: b.count, title: b.title });
   }
   for (const [id, k] of folderOf) {
-    if (k === key && id !== branches.get(k)!.note && id !== data.hub) {
+    if (k === key && id !== branches.get(k)!.note && id !== data.page) {
       items.push({ focus: { topic: f.topic, note: id }, size: 1, title: data.nodes.find((n) => n.id === id)?.title ?? id });
     }
   }

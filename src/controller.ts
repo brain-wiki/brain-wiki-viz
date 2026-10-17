@@ -76,7 +76,7 @@ export class Controller {
       topicData: null,
       noteError: null,
       topicError: null,
-      // Part of (spokes to the hub) repeats what clustering already shows; wikilinks are noisy.
+      // Part of (spokes to the topic page) repeats what clustering already shows; wikilinks are noisy.
       layers: Object.fromEntries(FAMILIES.map((f) => [f, true])) as Layers,
       health: false,
       labels: true,

@@ -92,7 +92,7 @@ function LinkView({ c, t }: { c: Controller; t: Extract<Connection, { kind: "lin
         <div class="hint">The link is not in the note's text as it reads now; the map may be older than the file.</div>
       )}
       {note && (
-        <button class="hub-link" onClick={() => c.openNote(t.from.id, t.from.topic)}>
+        <button class="open-link" onClick={() => c.openNote(t.from.id, t.from.topic)}>
           <Icon name="read" /> Read the whole note <span class="row-meta">{t.from.title}</span>
         </button>
       )}

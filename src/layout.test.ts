@@ -8,7 +8,7 @@ import { chooseRevealed, focusToHash, hashToFocus, healthSeverity, levelOf, pare
 import type { Constellation, TopicData, TopicSummary } from "./types";
 
 function topic(slug: string, notes: number, constellation: string): TopicSummary {
-  return { slug, title: slug, color: "#888888", constellation, notes, hub: `${slug}-hub`, updated: null, recent: 0, flags: {}, flagged: 0 };
+  return { slug, title: slug, color: "#888888", constellation, notes, page: `${slug}-page`, updated: null, recent: 0, flags: {}, flagged: 0 };
 }
 
 const topics = Array.from({ length: 30 }, (_, i) => topic(`t${i}`, 5 + ((i * 7) % 40), `c${(i % 3) + 1}`));
@@ -65,9 +65,9 @@ describe("topic layout", () => {
     slug: "t0",
     title: "t0",
     color: "#888888",
-    hub: "h",
+    page: "h",
     nodes: ["h", "a", "b", "c", "d"].map((id) => ({
-      id, title: id, path: `${id}.md`, kind: id === "h" ? "hub" : "note", topic: "t0", type: null,
+      id, title: id, path: `${id}.md`, kind: id === "h" ? "topic" : "note", topic: "t0", type: null,
       status: "active", updated: null, aliases: [], degree: 1, lines: 20, flags: [],
     })),
     links: [{ source: "a", target: "b", rel: "links_to" }],
@@ -92,10 +92,10 @@ describe("folder tree", () => {
     slug: "x",
     title: "X",
     color: "#888888",
-    hub: "index",
+    page: "index",
     path: "topics/x",
     nodes: paths.map((rel) => ({
-      id: rel.split("/").pop()!, title: `T ${rel}`, path: `topics/x/${rel}.md`, kind: rel === "index" ? "hub" : "note",
+      id: rel.split("/").pop()!, title: `T ${rel}`, path: `topics/x/${rel}.md`, kind: rel === "index" ? "topic" : "note",
       topic: "x", type: null, status: "active", updated: null, aliases: [], degree: 1, lines: 20,
       flags: [],
     })),
@@ -167,7 +167,7 @@ describe("folder tree", () => {
         id: rel,
         title: rel,
         path: `topics/x/${rel}.md`,
-        kind: rel === "index" ? "hub" : "note",
+        kind: rel === "index" ? "topic" : "note",
         lines: 10 + ((i * 37) % 400),
       })),
     };
@@ -194,7 +194,7 @@ describe("folder tree", () => {
     const flat: TopicData = {
       ...data,
       slug: "flat",
-      nodes: rels.map((rel) => ({ ...data.nodes[1], id: rel, title: rel, path: `topics/x/${rel}.md`, kind: rel === "index" ? "hub" : "note", lines: 30 })),
+      nodes: rels.map((rel) => ({ ...data.nodes[1], id: rel, title: rel, path: `topics/x/${rel}.md`, kind: rel === "index" ? "topic" : "note", lines: 30 })),
     };
     const p = topicLayout(flat, topicRadius(rels.length));
     const ds = p.ids.map((_, i) => Math.hypot(...screen(p.positions.slice(i * 3, i * 3 + 3))));
@@ -216,7 +216,7 @@ describe("folder tree", () => {
         id: rel,
         title: rel,
         path: `topics/x/${rel}.md`,
-        kind: rel === "index" ? "hub" : "note",
+        kind: rel === "index" ? "topic" : "note",
         lines: rel.includes("long") ? 1500 : 15,
       })),
     };
@@ -249,7 +249,7 @@ describe("folder tree", () => {
         id: rel,
         title: rel,
         path: `topics/x/${rel}.md`,
-        kind: rel === "index" ? "hub" : "note",
+        kind: rel === "index" ? "topic" : "note",
         lines: rel.startsWith("long/") ? 2000 : 20,
       })),
     };
@@ -280,10 +280,10 @@ describe("branch labels", () => {
       slug: "l",
       title: "L",
       color: "#888888",
-      hub: "index",
+      page: "index",
       path: "topics/l",
       nodes: rels.map((rel) => ({
-        id: rel, title: titles[rel] ?? rel, path: `topics/l/${rel}.md`, kind: rel === "index" ? "hub" : "note",
+        id: rel, title: titles[rel] ?? rel, path: `topics/l/${rel}.md`, kind: rel === "index" ? "topic" : "note",
         topic: "l", type: null, status: "active", updated: null, aliases: [], degree: 1, lines: 20,
         flags: [],
       })),

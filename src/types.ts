@@ -26,7 +26,7 @@ export interface TopicSummary {
   constellation: string;
   parent?: string | null; // the enclosing topic, when this is a sub-topic
   notes: number;
-  hub: string | null;
+  page: string | null;
   updated: string | null;
   recent: number;
   flags: Partial<Record<Flag, number>>;
@@ -53,7 +53,7 @@ export interface World {
   brain: string;
   generated: string;
   profile: string;
-  totals: { topics: number; notes: number; hubs: number; episodes: number; links: number; flagged: number };
+  totals: { topics: number; notes: number; pages: number; episodes: number; links: number; flagged: number };
   constellations: Constellation[];
   topics: TopicSummary[];
   flows: Flow[];
@@ -65,7 +65,7 @@ export interface NodeData {
   id: string;
   title: string;
   path: string;
-  kind: "note" | "hub" | "episode";
+  kind: "note" | "topic" | "episode";
   topic: string | null;
   type: string | null;
   status: string;
@@ -93,7 +93,7 @@ export interface TopicData {
   slug: string;
   title: string;
   color: string;
-  hub: string | null;
+  page: string | null;
   path?: string; // the topic's folder in the brain
   nodes: NodeData[];
   links: Link[];

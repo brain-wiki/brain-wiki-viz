@@ -172,8 +172,8 @@ function TopicCard({ c, slug }: { c: Controller; slug: string }) {
   if (!t) return null;
   const titles = new Map(c.world.topics.map((x) => [x.slug, x]));
   const ready = data?.slug === slug ? data : null;
-  const busiest = ready ? [...ready.nodes].filter((n) => n.id !== ready.hub).sort((a, b) => b.degree - a.degree).slice(0, 8) : [];
-  const hub = ready?.nodes.find((n) => n.id === ready.hub);
+  const busiest = ready ? [...ready.nodes].filter((n) => n.id !== ready.page).sort((a, b) => b.degree - a.degree).slice(0, 8) : [];
+  const page = ready?.nodes.find((n) => n.id === ready.page);
   const subTopics = c.world.topics.filter((x) => x.parent === slug).sort((a, b) => b.notes - a.notes);
   const folders = ready
     ? [...folderTree(ready).branches.values()].filter((b) => b.depth === 1).sort((a, b) => b.count - a.count || a.title.localeCompare(b.title))
@@ -198,9 +198,9 @@ function TopicCard({ c, slug }: { c: Controller; slug: string }) {
           ))}
         </div>
       )}
-      {hub && (
-        <button class="hub-link" onClick={() => c.openNote(hub.id, slug)}>
-          <Icon name="spark" /> Open the topic index <span class="row-meta">{hub.title}</span>
+      {page && (
+        <button class="open-link" onClick={() => c.openNote(page.id, slug)}>
+          <Icon name="spark" /> Open the topic page <span class="row-meta">{page.title}</span>
         </button>
       )}
       {subTopics.length > 0 && (
