@@ -23,6 +23,9 @@ const FAMILY_HINT: Record<Family, string> = {
   links: "Links: wikilinks written in the note text",
   supersedes: "Replaces: pulses run from the old note to the one that replaced it",
   cites: "Sources: a note to the notes it cites as its sources",
+  conflicts: "Conflicts: two notes that disagree; a search for either returns both",
+  depends: "Depends on: pulses run from a note to the note it rests on",
+  parts: "Part of: a note to the whole it belongs to, such as a project, a series, or a team",
 };
 
 

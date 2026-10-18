@@ -66,19 +66,30 @@ interface Picked {
   color?: string;
 }
 
-/** Body links, supersession (old → new), and citations (citing → cited), each a layer of its own. */
-export type Family = "links" | "supersedes" | "cites";
+/**
+ * Body links, supersession (old → new), citations (citing → cited), and the relation fields:
+ * conflicts, dependencies (dependent → what it rests on), and parts (part → whole). Each is a
+ * layer of its own; the order is the dock's and the number keys'.
+ */
+export type Family = "links" | "supersedes" | "cites" | "conflicts" | "depends" | "parts";
 export type Layers = Record<Family, boolean>;
-export const FAMILIES: Family[] = ["links", "supersedes", "cites"];
+export const FAMILIES: Family[] = ["links", "supersedes", "cites", "conflicts", "depends", "parts"];
 export const FAMILY_COLORS: Record<Family, string> = {
   links: "#9a7bff",
   supersedes: "#ffb347",
   cites: "#6f7d99",
+  conflicts: "#ff3b4f",
+  depends: "#4f8dff",
+  parts: "#38c7b0",
 };
+/** `dashed` trails pulse from the note holding the link to its target; a conflict has no direction. */
 const FAMILY_STYLE: Record<Family, { width: number; opacity: number; dashed: boolean }> = {
   links: { width: 1.2, opacity: 0.38, dashed: false },
   supersedes: { width: 2.0, opacity: 0.85, dashed: true },
   cites: { width: 1.0, opacity: 0.2, dashed: false },
+  conflicts: { width: 2.4, opacity: 0.95, dashed: false },
+  depends: { width: 1.7, opacity: 0.75, dashed: true },
+  parts: { width: 1.4, opacity: 0.6, dashed: false },
 };
 /** The folder tree inside a topic: always drawn, not a layer. */
 const TREE_STYLE = { width: 1.0, opacity: 0.32 };
@@ -131,6 +142,12 @@ function familyOf(rel: Rel): Family | null {
       return "supersedes"; // old → new
     case "source":
       return "cites"; // citing → cited
+    case "conflicts_with":
+      return "conflicts";
+    case "depends_on":
+      return "depends"; // dependent → what it rests on
+    case "part_of":
+      return "parts"; // part → whole
     default:
       return null;
   }
@@ -222,7 +239,7 @@ export class Galaxy {
   private focus: Focus = {};
   private neighborhood = new Map<string, number>();
   private run: RunSummary | null = null;
-  private layers: Layers = { links: true, supersedes: true, cites: true };
+  private layers: Layers = Object.fromEntries(FAMILIES.map((f) => [f, true])) as Layers;
   private health = false;
   private severity: Float32Array;
   private dustSeverity: Float32Array;

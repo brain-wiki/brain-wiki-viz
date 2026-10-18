@@ -3,6 +3,7 @@ import type { Family } from "../scene/Galaxy";
 import type { Flag, Rel } from "../types";
 
 export const FLAG_LABEL: Record<Flag, string> = {
+  conflict: "Conflicts",
   stale: "Stale links",
   superseded: "Superseded",
   orphan: "Orphans",
@@ -11,6 +12,7 @@ export const FLAG_LABEL: Record<Flag, string> = {
 
 /** Keep in step with flagColor in scene/shaders.ts. */
 export const FLAG_COLOR: Record<Flag, string> = {
+  conflict: "#ff3b4f",
   stale: "#ffad38",
   superseded: "#bd85ff",
   orphan: "#9aa6c4",
@@ -19,7 +21,8 @@ export const FLAG_COLOR: Record<Flag, string> = {
 
 /** What each flag means, for tooltips. */
 export const FLAG_HINT: Record<Flag, string> = {
-  stale: "Links to a superseded or archived note it did not replace",
+  conflict: "Disagrees with another active note; read both",
+  stale: "Rests on, or links to, a superseded or archived note it did not replace",
   superseded: "Replaced by a newer note",
   orphan: "No other note links here",
   lint_error: "The file has format problems",
@@ -29,12 +32,18 @@ export const FAMILY_LABEL: Record<Family, string> = {
   links: "Links",
   supersedes: "Replaces",
   cites: "Sources",
+  conflicts: "Conflicts",
+  depends: "Depends on",
+  parts: "Part of",
 };
 
 /** How a link relation reads in a count, for the links between two topics. */
 export const REL_COUNT: Record<Rel, string> = {
   links_to: "links",
   superseded_by: "replaced",
+  conflicts_with: "conflicts",
+  depends_on: "dependencies",
+  part_of: "part of",
   source: "citations",
 };
 
@@ -43,6 +52,9 @@ export const LINK_SENTENCE: Record<Family, { phrase: string; subject: "from" | "
   links: { phrase: "links to", subject: "from" },
   supersedes: { phrase: "supersedes", subject: "to", roles: ["newer", "older"] },
   cites: { phrase: "cites", subject: "from" },
+  conflicts: { phrase: "conflicts with", subject: "from" },
+  depends: { phrase: "depends on", subject: "from" },
+  parts: { phrase: "is part of", subject: "from", roles: ["part", "whole"] },
 };
 
 export function Dot({ color, size = 8 }: { color: string; size?: number }) {

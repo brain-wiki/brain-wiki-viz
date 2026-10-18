@@ -10,21 +10,54 @@ import { Chip, Dot, FLAG_COLOR, FLAG_LABEL, fmt, Icon } from "./ui";
 /** How each link reads from the note that holds it, in display order. */
 const OUT_LABEL: Record<Outlink["relation"], string> = {
   superseded_by: "Replaced by",
+  conflicts_with: "Conflicts with",
+  depends_on: "Depends on",
+  part_of: "Part of",
   links_to: "Links to",
   cites: "Cites",
 };
 
-/** How each link reads from the note it points to: this note supersedes, or is linked or cited by, that one. */
+/** How each link reads from the note it points to: this note supersedes or conflicts with that one, or that one depends on, links to, or cites this. */
 const IN_LABEL: Record<Backlink["relation"], string> = {
   supersedes: "replaced by this",
+  conflicts_with: "conflicts with this",
+  depended_on_by: "depends on this",
   linked_from: "links here",
   cited_by: "cites this",
 };
 
-const OUT_FAMILY: Record<Outlink["relation"], Family> = { superseded_by: "supersedes", links_to: "links", cites: "cites" };
-const IN_FAMILY: Record<Backlink["relation"], Family> = { supersedes: "supersedes", linked_from: "links", cited_by: "cites" };
-const OUT_NAME: Record<Rel, Outlink["relation"]> = { superseded_by: "superseded_by", links_to: "links_to", source: "cites" };
-const IN_NAME: Record<Rel, Backlink["relation"]> = { superseded_by: "supersedes", links_to: "linked_from", source: "cited_by" };
+const OUT_FAMILY: Record<Outlink["relation"], Family> = {
+  superseded_by: "supersedes",
+  conflicts_with: "conflicts",
+  depends_on: "depends",
+  part_of: "parts",
+  links_to: "links",
+  cites: "cites",
+};
+const IN_FAMILY: Record<Backlink["relation"], Family> = {
+  supersedes: "supersedes",
+  conflicts_with: "conflicts",
+  depended_on_by: "depends",
+  linked_from: "links",
+  cited_by: "cites",
+};
+const OUT_NAME: Record<Rel, Outlink["relation"]> = {
+  superseded_by: "superseded_by",
+  conflicts_with: "conflicts_with",
+  depends_on: "depends_on",
+  part_of: "part_of",
+  links_to: "links_to",
+  source: "cites",
+};
+/** Incoming `part_of` links are listed as parts, not as backlinks. */
+const IN_NAME: Record<Exclude<Rel, "part_of">, Backlink["relation"]> = {
+  superseded_by: "supersedes",
+  conflicts_with: "conflicts_with",
+  depends_on: "depended_on_by",
+  links_to: "linked_from",
+  source: "cited_by",
+};
+const byTitle = (a: LinkRow, b: LinkRow) => a.title.localeCompare(b.title, undefined, { numeric: true, sensitivity: "base" });
 
 /** Note text is shown as plain text, never rendered: drop wikilink brackets and emphasis markers. */
 function plainLinks(s: string): string {
@@ -53,9 +86,17 @@ function topicsOf(data: TopicData | null): Map<string, string | null> {
   return out;
 }
 
+interface NoteLinks {
+  out: LinkRow[];
+  in: LinkRow[];
+  /** The notes that are part of this one, by title, and how many there are in all. */
+  parts: LinkRow[];
+  partsTotal: number;
+}
+
 /** One note's links in both directions from the topic payload, for exported files that carry no note detail. */
-function linksFromTopic(note: string, data: TopicData | null): { out: LinkRow[]; in: LinkRow[] } {
-  const rows = { out: [] as LinkRow[], in: [] as LinkRow[] };
+function linksFromTopic(note: string, data: TopicData | null): NoteLinks {
+  const rows: NoteLinks = { out: [], in: [], parts: [], partsTotal: 0 };
   if (!data) return rows;
   const titles = new Map(data.nodes.map((n) => [n.id, n.title]));
   const seen = new Set<string>();
@@ -66,6 +107,8 @@ function linksFromTopic(note: string, data: TopicData | null): { out: LinkRow[];
     if (dir === "out") {
       const r = OUT_NAME[rel];
       rows.out.push({ relation: r, family: OUT_FAMILY[r], label: OUT_LABEL[r], id, title, topic });
+    } else if (rel === "part_of") {
+      rows.parts.push({ relation: "has_part", family: "parts", label: "Parts", id, title, topic });
     } else {
       const r = IN_NAME[rel];
       rows.in.push({ relation: r, family: IN_FAMILY[r], label: IN_LABEL[r], id, title, topic });
@@ -79,11 +122,13 @@ function linksFromTopic(note: string, data: TopicData | null): { out: LinkRow[];
     if (e.source === note) add("out", e.rel, e.target, e.title, e.topic);
     else if (e.target === note) add("in", e.rel, e.source, e.title, e.topic);
   }
+  rows.parts.sort(byTitle);
+  rows.partsTotal = rows.parts.length;
   return rows;
 }
 
 /** The note's links as the server read them, with each target's topic so a row can fly there. */
-function linksFromNote(note: NoteDetail, topics: Map<string, string | null>): { out: LinkRow[]; in: LinkRow[] } {
+function linksFromNote(note: NoteDetail, topics: Map<string, string | null>): NoteLinks {
   const topicOf = (id: string | null, raw?: string) => (id ? (raw ? note.links?.[raw]?.topic : undefined) ?? topics.get(id) ?? null : null);
   return {
     out: (note.outlinks ?? []).map((o) => ({
@@ -102,6 +147,8 @@ function linksFromNote(note: NoteDetail, topics: Map<string, string | null>): { 
       title: b.title,
       topic: topicOf(b.id),
     })),
+    parts: (note.parts ?? []).map((p) => ({ relation: "has_part", family: "parts", label: "Parts", id: p.id, title: p.title, topic: topicOf(p.id) })),
+    partsTotal: note.parts_total ?? note.parts?.length ?? 0,
   };
 }
 
@@ -339,6 +386,15 @@ function NoteCard({ c, id, slug }: { c: Controller; id: string; slug: string }) 
           {rows.length > 12 && <div class="more">and {rows.length - 12} more</div>}
         </div>
       ))}
+      {links.parts.length > 0 && (
+        <>
+          <div class="section-title" style={{ color: FAMILY_COLORS.parts }}>Parts <span class="section-count">{links.partsTotal}</span></div>
+          <div class="rows">
+            {links.parts.slice(0, 20).map((r) => row(r))}
+            {links.partsTotal > 20 && <div class="more">and {links.partsTotal - 20} more</div>}
+          </div>
+        </>
+      )}
       {links.in.length > 0 && (
         <>
           <div class="section-title">Linked from <span class="section-count">{links.in.length}</span></div>

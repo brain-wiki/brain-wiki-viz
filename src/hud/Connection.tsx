@@ -7,14 +7,29 @@ import { linkContext, linkedText, Markdown } from "./Markdown";
 import { linkPassages, propertyEntries } from "./snippets";
 import { Dot, FAMILY_LABEL, fmt, Icon, LINK_SENTENCE, REL_COUNT } from "./ui";
 
-const FAMILY_OF: Record<Rel, Family> = { links_to: "links", superseded_by: "supersedes", source: "cites" };
+const FAMILY_OF: Record<Rel, Family> = {
+  links_to: "links",
+  superseded_by: "supersedes",
+  source: "cites",
+  conflicts_with: "conflicts",
+  depends_on: "depends",
+  part_of: "parts",
+};
 /** The frontmatter property that holds a metadata link, by family. */
-const PROPERTY: Partial<Record<Family, string>> = { supersedes: "bw-superseded_by", cites: "bw-sources" };
+const PROPERTY: Partial<Record<Family, string>> = {
+  supersedes: "bw-superseded_by",
+  cites: "bw-sources",
+  conflicts: "bw-conflicts_with",
+  depends: "bw-depends_on",
+  parts: "bw-part_of",
+};
 /** How the far note links back, read from the near note's backlinks. */
 const BACK: Record<Backlink["relation"], string> = {
   linked_from: "also links back",
   cited_by: "also cites it",
   supersedes: "is replaced by it",
+  conflicts_with: "also names the conflict",
+  depended_on_by: "also depends on it",
 };
 const LIST_MAX = 30;
 
