@@ -20,7 +20,6 @@ const KEYMAP = keymap(K);
 
 
 const FAMILY_HINT: Record<Family, string> = {
-  links: "Links: wikilinks written in the note text",
   supersedes: "Replaces: pulses run from the old note to the one that replaced it",
   cites: "Sources: a note to the notes it cites as its sources",
   conflicts: "Conflicts: two notes that disagree; a search for either returns both",
@@ -353,7 +352,7 @@ function FlowCard({ c, target, left, top }: { c: Controller; target: Extract<Tar
     <div class="hovercard panel" style={{ left: `${left}px`, top: `${top}px` }}>
       <div class="insp-kicker">Links between {target.level === "constellation" ? "groups" : "topics"}</div>
       <div class="hover-title">{name(a)} ↔ {name(b)}</div>
-      <div class="hover-line">{target.total} {target.total === 1 ? "link" : "links"}{rels.length > 1 || !target.rels.links_to ? `: ${rels.join(" · ")}` : ""}</div>
+      <div class="hover-line">{target.total} {target.total === 1 ? "link" : "links"}{rels.length ? `: ${rels.join(" · ")}` : ""}</div>
       <div class="hover-line link-hint">Click to see these links</div>
     </div>
   );

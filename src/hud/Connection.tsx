@@ -3,12 +3,12 @@ import { useCallback, useEffect, useState } from "preact/hooks";
 import type { Connection, Controller } from "../controller";
 import { FAMILY_COLORS, shortTitle, type Family, type LinkEnd } from "../scene/Galaxy";
 import type { Backlink, LinkTarget, NoteDetail, Rel, TopicData } from "../types";
-import { linkContext, linkedText, Markdown } from "./Markdown";
-import { linkPassages, propertyEntries } from "./snippets";
+import { linkContext, linkedText } from "./Markdown";
+import { propertyEntries } from "./snippets";
 import { Dot, FAMILY_LABEL, fmt, Icon, LINK_SENTENCE, REL_COUNT } from "./ui";
 
-const FAMILY_OF: Record<Rel, Family> = {
-  links_to: "links",
+/** The drawn kind of each link; body wikilinks have none. */
+const FAMILY_OF: Partial<Record<Rel, Family>> = {
   superseded_by: "supersedes",
   source: "cites",
   conflicts_with: "conflicts",
@@ -76,7 +76,6 @@ function LinkView({ c, t }: { c: Controller; t: Extract<Connection, { kind: "lin
   const links = note?.links ?? {};
   const property = PROPERTY[t.family];
   const entries = note && property ? propertyEntries(note.properties?.[property], links, t.to.id) : [];
-  const passages = note?.markdown != null && t.family === "links" ? linkPassages(note.markdown, links, t.to.id) : [];
   const back = (note?.backlinks ?? []).filter((b) => b.id === t.to.id);
   const ctx = linkContext(links, onOpen);
   return (
@@ -98,12 +97,7 @@ function LinkView({ c, t }: { c: Controller; t: Extract<Connection, { kind: "lin
             <span class="passage-key">{property}</span> {linkedText(v, ctx)}
           </div>
         ))}
-      {passages.map((p) => (
-        <div class="passage" key={p}>
-          <Markdown text={p} links={links} onOpen={onOpen} />
-        </div>
-      ))}
-      {note && !note.partial && entries.length === 0 && passages.length === 0 && (
+      {note && !note.partial && entries.length === 0 && (
         <div class="hint">The link is not in the note's text as it reads now; the map may be older than the file.</div>
       )}
       {note && (
@@ -153,7 +147,7 @@ function FlowView({ c, t }: { c: Controller; t: Extract<Connection, { kind: "flo
       </div>
       <div class="hint">
         {fmt(t.total)} {t.total === 1 ? "link" : "links"}
-        {rels.length > 1 || !t.rels.links_to ? `: ${rels.join(" · ")}` : ""}
+        {rels.length ? `: ${rels.join(" · ")}` : ""}
       </div>
       {group ? <TopicPairs c={c} t={t} /> : <NoteLinks c={c} t={t} />}
     </>
@@ -166,13 +160,13 @@ function NoteLinks({ c, t }: { c: Controller; t: Extract<Connection, { kind: "fl
   if (!data) return <div class="empty small">{error ?? "Loading the links…"}</div>;
   const titles = new Map(data.nodes.map((n) => [n.id, n.title]));
   const rows = data.external
-    .filter((e) => e.topic === t.b)
+    .filter((e) => e.topic === t.b && FAMILY_OF[e.rel])
     .map((e) => {
       const near: LinkEnd = { id: e.dir === "out" ? e.source : e.target, title: "", topic: t.a };
       near.title = titles.get(near.id) ?? near.id;
       const far: LinkEnd = { id: e.dir === "out" ? e.target : e.source, title: e.title, topic: t.b };
       const [from, to] = e.dir === "out" ? [near, far] : [far, near];
-      return { family: FAMILY_OF[e.rel] ?? "links", from, to };
+      return { family: FAMILY_OF[e.rel]!, from, to };
     });
   return (
     <>

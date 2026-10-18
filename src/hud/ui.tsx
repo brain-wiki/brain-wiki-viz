@@ -29,7 +29,6 @@ export const FLAG_HINT: Record<Flag, string> = {
 };
 
 export const FAMILY_LABEL: Record<Family, string> = {
-  links: "Links",
   supersedes: "Replaces",
   cites: "Sources",
   conflicts: "Conflicts",
@@ -49,7 +48,6 @@ export const REL_COUNT: Record<Rel, string> = {
 
 /** A link read as a sentence: who is the subject, and the roles when direction matters. */
 export const LINK_SENTENCE: Record<Family, { phrase: string; subject: "from" | "to"; roles?: [string, string] }> = {
-  links: { phrase: "links to", subject: "from" },
   supersedes: { phrase: "supersedes", subject: "to", roles: ["newer", "older"] },
   cites: { phrase: "cites", subject: "from" },
   conflicts: { phrase: "conflicts with", subject: "from" },

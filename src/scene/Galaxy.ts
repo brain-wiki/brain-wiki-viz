@@ -11,7 +11,7 @@ import { UnrealBloomPass } from "three/addons/postprocessing/UnrealBloomPass.js"
 import type { Source } from "../api";
 import { TILT, VIEW, galaxyLayout, noteWeight, topicLayout, type BranchPlacement, type GalaxyLayout, type Placed } from "../layout";
 import { chooseRevealed, healthSeverity, levelOf, projectedRadius, type Focus, type ViewSample } from "../lod";
-import { FLAGS, type NodeData, type Rel, type RunSummary, type TopicData, type TopicSummary, type World } from "../types";
+import { FLAGS, type Flow, type NodeData, type Rel, type RunSummary, type TopicData, type TopicSummary, type World } from "../types";
 import { isMac } from "../util/keys";
 import { gaussian, rng } from "../util/rand";
 import { LabelLayer, type LabelCandidate } from "./labels";
@@ -67,15 +67,17 @@ interface Picked {
 }
 
 /**
- * Body links, supersession (old → new), citations (citing → cited), and the relation fields:
- * conflicts, dependencies (dependent → what it rests on), and parts (part → whole). Each is a
- * layer of its own; the order is the dock's and the number keys'.
+ * The links the map draws: supersession (old → new), citations (citing → cited), and the relation
+ * fields: conflicts, dependencies (dependent → what it rests on), and parts (part → whole). Each
+ * is a layer of its own; the order is the dock's and the number keys'. A body wikilink only says
+ * one note mentions another, so it is listed in the panels but never drawn.
  */
-export type Family = "links" | "supersedes" | "cites" | "conflicts" | "depends" | "parts";
+export type Family = "supersedes" | "cites" | "conflicts" | "depends" | "parts";
 export type Layers = Record<Family, boolean>;
-export const FAMILIES: Family[] = ["links", "supersedes", "cites", "conflicts", "depends", "parts"];
+export const FAMILIES: Family[] = ["supersedes", "cites", "conflicts", "depends", "parts"];
+/** Body wikilinks, in the panels' link lists. */
+export const LINK_COLOR = "#9a7bff";
 export const FAMILY_COLORS: Record<Family, string> = {
-  links: "#9a7bff",
   supersedes: "#ffb347",
   cites: "#6f7d99",
   conflicts: "#ff3b4f",
@@ -84,7 +86,6 @@ export const FAMILY_COLORS: Record<Family, string> = {
 };
 /** `dashed` trails pulse from the note holding the link to its target; a conflict has no direction. */
 const FAMILY_STYLE: Record<Family, { width: number; opacity: number; dashed: boolean }> = {
-  links: { width: 1.2, opacity: 0.38, dashed: false },
   supersedes: { width: 2.0, opacity: 0.85, dashed: true },
   cites: { width: 1.0, opacity: 0.2, dashed: false },
   conflicts: { width: 2.4, opacity: 0.95, dashed: false },
@@ -133,11 +134,10 @@ interface TopicLayer {
   target: number;
 }
 
-/** A link's family; every link runs from its source (the note holding it) to its target. */
-function familyOf(rel: Rel): Family | null {
+/** A link's family, or null for a body wikilink, which is not drawn. Every link runs from its
+ * source (the note holding it) to its target. */
+export function familyOf(rel: Rel): Family | null {
   switch (rel) {
-    case "links_to":
-      return "links";
     case "superseded_by":
       return "supersedes"; // old → new
     case "source":
@@ -151,6 +151,17 @@ function familyOf(rel: Rel): Family | null {
     default:
       return null;
   }
+}
+
+/** The flows between topics, counting only the links the map draws. */
+export function drawnFlows(flows: Flow[]): Flow[] {
+  const out: Flow[] = [];
+  for (const f of flows) {
+    const rels = Object.fromEntries(Object.entries(f.rels).filter(([rel]) => familyOf(rel as Rel)));
+    const total = Object.values(rels).reduce((sum, n) => sum + (n ?? 0), 0);
+    if (total > 0) out.push({ ...f, rels, total });
+  }
+  return out;
 }
 
 function recency(updated: string | null | undefined, now: number): number {

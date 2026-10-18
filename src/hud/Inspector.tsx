@@ -1,6 +1,6 @@
 import { useMemo, useState } from "preact/hooks";
 import type { Controller } from "../controller";
-import { FAMILY_COLORS, type Family } from "../scene/Galaxy";
+import { FAMILY_COLORS, LINK_COLOR, type Family } from "../scene/Galaxy";
 import { type Branch, folderTree } from "../layout";
 import { useStore } from "../store";
 import { ConnectionCard } from "./Connection";
@@ -26,19 +26,20 @@ const IN_LABEL: Record<Backlink["relation"], string> = {
   cited_by: "cites this",
 };
 
-const OUT_FAMILY: Record<Outlink["relation"], Family> = {
+/** The drawn kind of each link, which gives its colour; body wikilinks have none. */
+const OUT_FAMILY: Record<Outlink["relation"], Family | null> = {
   superseded_by: "supersedes",
   conflicts_with: "conflicts",
   depends_on: "depends",
   part_of: "parts",
-  links_to: "links",
+  links_to: null,
   cites: "cites",
 };
-const IN_FAMILY: Record<Backlink["relation"], Family> = {
+const IN_FAMILY: Record<Backlink["relation"], Family | null> = {
   supersedes: "supersedes",
   conflicts_with: "conflicts",
   depended_on_by: "depends",
-  linked_from: "links",
+  linked_from: null,
   cited_by: "cites",
 };
 const OUT_NAME: Record<Rel, Outlink["relation"]> = {
@@ -57,6 +58,7 @@ const IN_NAME: Record<Exclude<Rel, "part_of">, Backlink["relation"]> = {
   links_to: "linked_from",
   source: "cited_by",
 };
+const colorOf = (family: Family | null | undefined) => (family ? FAMILY_COLORS[family] : LINK_COLOR);
 const byTitle = (a: LinkRow, b: LinkRow) => a.title.localeCompare(b.title, undefined, { numeric: true, sensitivity: "base" });
 
 /** Note text is shown as plain text, never rendered: drop wikilink brackets and emphasis markers. */
@@ -69,7 +71,7 @@ function plainLinks(s: string): string {
 
 interface LinkRow {
   relation: string;
-  family: Family;
+  color: string;
   label: string;
   /** null for a link that names no note. */
   id: string | null;
@@ -106,12 +108,12 @@ function linksFromTopic(note: string, data: TopicData | null): NoteLinks {
     seen.add(key);
     if (dir === "out") {
       const r = OUT_NAME[rel];
-      rows.out.push({ relation: r, family: OUT_FAMILY[r], label: OUT_LABEL[r], id, title, topic });
+      rows.out.push({ relation: r, color: colorOf(OUT_FAMILY[r]), label: OUT_LABEL[r], id, title, topic });
     } else if (rel === "part_of") {
-      rows.parts.push({ relation: "has_part", family: "parts", label: "Parts", id, title, topic });
+      rows.parts.push({ relation: "has_part", color: FAMILY_COLORS.parts, label: "Parts", id, title, topic });
     } else {
       const r = IN_NAME[rel];
-      rows.in.push({ relation: r, family: IN_FAMILY[r], label: IN_LABEL[r], id, title, topic });
+      rows.in.push({ relation: r, color: colorOf(IN_FAMILY[r]), label: IN_LABEL[r], id, title, topic });
     }
   };
   for (const l of data.links) {
@@ -133,7 +135,7 @@ function linksFromNote(note: NoteDetail, topics: Map<string, string | null>): No
   return {
     out: (note.outlinks ?? []).map((o) => ({
       relation: o.relation,
-      family: OUT_FAMILY[o.relation] ?? "links",
+      color: colorOf(OUT_FAMILY[o.relation]),
       label: OUT_LABEL[o.relation] ?? o.relation,
       id: o.resolved ? o.id : null,
       title: o.title ?? o.target,
@@ -141,13 +143,13 @@ function linksFromNote(note: NoteDetail, topics: Map<string, string | null>): No
     })),
     in: (note.backlinks ?? []).map((b) => ({
       relation: b.relation,
-      family: IN_FAMILY[b.relation] ?? "links",
+      color: colorOf(IN_FAMILY[b.relation]),
       label: IN_LABEL[b.relation] ?? b.relation.replace(/_/g, " "),
       id: b.id,
       title: b.title,
       topic: topicOf(b.id),
     })),
-    parts: (note.parts ?? []).map((p) => ({ relation: "has_part", family: "parts", label: "Parts", id: p.id, title: p.title, topic: topicOf(p.id) })),
+    parts: (note.parts ?? []).map((p) => ({ relation: "has_part", color: FAMILY_COLORS.parts, label: "Parts", id: p.id, title: p.title, topic: topicOf(p.id) })),
     partsTotal: note.parts_total ?? note.parts?.length ?? 0,
   };
 }
@@ -381,7 +383,7 @@ function NoteCard({ c, id, slug }: { c: Controller; id: string; slug: string }) 
       {groups.length > 0 && <div class="section-title">Links <span class="section-count">{links.out.length}</span></div>}
       {groups.map(([rel, rows]) => (
         <div class="rel-group" key={rel}>
-          <div class="rel-label" style={{ color: FAMILY_COLORS[rows[0].family] }}>{rows[0].label}</div>
+          <div class="rel-label" style={{ color: rows[0].color }}>{rows[0].label}</div>
           {rows.slice(0, 12).map((r) => row(r))}
           {rows.length > 12 && <div class="more">and {rows.length - 12} more</div>}
         </div>

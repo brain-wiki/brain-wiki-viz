@@ -2,7 +2,7 @@ import type { Source } from "./api";
 import { Trail, type TrailState } from "./history";
 import { focusToHash, hashToFocus, levelOf, viewFocus, type Focus, type ViewSample } from "./lod";
 import { nestChildren, nestUp } from "./nesting";
-import { FAMILIES, Galaxy, type Layers, type Quality, type QualityMode, type Target } from "./scene/Galaxy";
+import { drawnFlows, FAMILIES, Galaxy, type Layers, type Quality, type QualityMode, type Target } from "./scene/Galaxy";
 import { Store } from "./store";
 import type { Health, NoteDetail, RunSummary, SearchHit, TopicData, World } from "./types";
 
@@ -57,10 +57,15 @@ export class Controller {
   private constellationOf: Map<string, string>;
   private trail: Trail;
 
+  /** The world as the map draws it: flows count only drawn links, not body wikilinks. */
+  readonly world: World;
+
   constructor(
     readonly source: Source,
-    readonly world: World,
+    world: World,
   ) {
+    world = { ...world, flows: drawnFlows(world.flows) };
+    this.world = world;
     this.constellationOf = new Map(world.topics.map((t) => [t.slug, t.constellation]));
     this.trail = new Trail(restoreTrail(`brainviz.trail:${world.brain}:${location.pathname}`));
     // Low by default: the map reads fine without glow and runs on any GPU. A ?quality= URL wins,
@@ -76,7 +81,6 @@ export class Controller {
       topicData: null,
       noteError: null,
       topicError: null,
-      // Part of (spokes to the topic page) repeats what clustering already shows; wikilinks are noisy.
       layers: Object.fromEntries(FAMILIES.map((f) => [f, true])) as Layers,
       health: false,
       labels: true,
